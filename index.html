@@ -749,7 +749,7 @@ footer{background:var(--ink);color:#d6f5e3;text-align:center;padding:15px 12px;f
         <div class="logo-box" id="hdrLogo"></div>
         <div>
           <div class="brand-title" id="hdrPortal">KIM Online</div>
-          <div class="brand-sub">EXAMINATION PORTAL</div>
+          <div class="brand-sub">EXAM RESULT PORTAL</div>
         </div>
       </div>
       <button type="button" id="lockBtn" class="lock-btn" title="അഡ്മിൻ പാനൽ" aria-label="Admin Panel" onclick="openAdminOrLogin()">🔒</button>
@@ -817,7 +817,8 @@ footer{background:var(--ink);color:#d6f5e3;text-align:center;padding:15px 12px;f
       <!-- Strictly Vertical Search Form -->
       <div class="search-v">
         <select id="searchCls" aria-label="ക്ലാസ്സ് തിരഞ്ഞെടുക്കുക" onchange="clearResult()"></select>
-        <input id="regInput" type="text" placeholder="ഉദാ: REG101" aria-label="രജിസ്റ്റർ നമ്പർ" onkeydown="if(event.key==='Enter')searchResult()">
+        <input id="regInput" type="text" placeholder="രജിസ്റ്റർ നമ്പർ നൽകുക"
+ aria-label="രജിസ്റ്റർ നമ്പർ" onkeydown="if(event.key==='Enter')searchResult()">
         <button type="button" class="btn" onclick="searchResult()">🔍 ഫലം കാണുക</button>
       </div>
     </div>
