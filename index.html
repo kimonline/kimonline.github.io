@@ -1,0 +1,2832 @@
+<!DOCTYPE html>
+<html lang="ml"><head><base href="https://1751615613-atari-embeds.googleusercontent.com/embeds/a7eacaf78f1e3ba463385dc9185669ab/inner-frame-minified.html?jsh=m%3B%2F_%2Fscs%2Fabc-static%2F_%2Fjs%2Fk%3Dgapi.lb.en.smUXTMp7CeY.O%2Fd%3D1%2Frs%3DAHpOoo_-UMASGI-dbLvJPxfO6N46l3l46A%2Fm%3D__features__" target="_blank">
+      <script>
+        (function() {
+          if (window.__atariInitRender) {
+            window.__atariInitRender(false);
+            return;
+          }
+          var isLiquid = false;
+          var guardsInstalled = false;
+          var LOCAL_DOWNLOAD_URL_RE = /^(?:blob|data):/i;
+          var PROTOCOL_RELATIVE_RE = /^[\/\\]{2}/;
+          var FORBIDDEN_TAG_RE = /^(?:iframe|frame|object|embed)$/i;
+          var XLINK_NS = 'http://www.w3.org/1999/xlink';
+          var origPreventDefault = Event.prototype.preventDefault;
+          var origStopPropagation = Event.prototype.stopPropagation;
+          var origStopImmediatePropagation =
+              Event.prototype.stopImmediatePropagation;
+          var origAddEventListener = EventTarget.prototype.addEventListener;
+          var origRemoveEventListener =
+              EventTarget.prototype.removeEventListener;
+          var origWindowStop = window.stop ? window.stop.bind(window) : null;
+          var origElementRemove = Element.prototype.remove;
+          var origGetAttribute = Element.prototype.getAttribute;
+          var origGetAttributeNS = Element.prototype.getAttributeNS;
+          var origHasAttribute = Element.prototype.hasAttribute;
+          var origHasAttributeNS = Element.prototype.hasAttributeNS;
+          var origSetAttribute = Element.prototype.setAttribute;
+          var origSetAttributeNS = Element.prototype.setAttributeNS;
+          var origSetAttributeNode = Element.prototype.setAttributeNode;
+          var origSetAttributeNodeNS = Element.prototype.setAttributeNodeNS;
+          var origRemoveAttribute = Element.prototype.removeAttribute;
+          var origRemoveAttributeNS = Element.prototype.removeAttributeNS;
+          var origComposedPath = Event.prototype.composedPath;
+          var origCreateElement = Document.prototype.createElement;
+          var origCreateElementNS = Document.prototype.createElementNS;
+          var validatingEvents =
+              typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+          var activeDeferredListeners = null;
+          var inProgrammaticClick = 0;
+
+          function isLinkElement(el) {
+            var tag = el && el.tagName && el.tagName.toLowerCase();
+            return tag === 'a' || tag === 'area';
+          }
+
+          function hasLinkHref(link) {
+            return origHasAttribute.call(link, 'href') ||
+                origHasAttributeNS.call(link, XLINK_NS, 'href');
+          }
+
+          // Returns the href of an HTML or SVG link, which may only have the
+          // legacy xlink:href attribute.
+          function getLinkHref(link) {
+            return origGetAttribute.call(link, 'href') ||
+                origGetAttributeNS.call(link, XLINK_NS, 'href');
+          }
+
+          function removeLinkHref(link) {
+            origRemoveAttribute.call(link, 'href');
+            origRemoveAttributeNS.call(link, XLINK_NS, 'href');
+          }
+
+          // Returns whether the link downloads a file that the app created,
+          // which doesn't send data to other sites.
+          function isLocalDownloadLink(link, href) {
+            return origHasAttribute.call(link, 'download') &&
+                LOCAL_DOWNLOAD_URL_RE.test(href);
+          }
+
+          function isRefreshValue(val) {
+            return String(val || '').trim().toLowerCase() === 'refresh';
+          }
+
+          function purgeMetaRefresh(root) {
+            if (!root || !root.querySelectorAll) return;
+            var metas = root.querySelectorAll('meta[http-equiv]');
+            for (var i = 0; i < metas.length; i++) {
+              if (isRefreshValue(
+                  origGetAttribute.call(metas[i], 'http-equiv'))) {
+                origElementRemove.call(metas[i]);
+              }
+            }
+            var frames = root.querySelectorAll('iframe, frame, object, embed');
+            for (var j = 0; j < frames.length; j++) {
+              origElementRemove.call(frames[j]);
+            }
+          }
+
+          function getParentOrHost(node) {
+            if (!node) return null;
+            if (node.parentElement) return node.parentElement;
+            var parent = node.parentNode;
+            return parent && parent.host ? parent.host : null;
+          }
+
+          function findLinkFromNode(startNode, requireHref) {
+            var el = startNode;
+            while (el && el !== document) {
+              if (isLinkElement(el) && (!requireHref || hasLinkHref(el))) {
+                return el;
+              }
+              el = getParentOrHost(el);
+            }
+            return null;
+          }
+
+          function findLinkFromEvent(e) {
+            if (origComposedPath) {
+              try {
+                var path = origComposedPath.call(e);
+                for (var i = 0; i < path.length; i++) {
+                  var node = path[i];
+                  if (isLinkElement(node) && hasLinkHref(node)) {
+                    return node;
+                  }
+                }
+              } catch (err) {}
+            }
+            return findLinkFromNode(e.target, true);
+          }
+
+          // Keeps the app from opening popups, navigating its frame, and
+          // adding meta refresh tags. document.open() keeps the window, its
+          // prototypes, and the document, so these are installed once per
+          // frame rather than on every render.
+          function installNavigationGuards() {
+            try {
+              Object.defineProperty(window, 'open', {
+                value: function() {
+                  return null;
+                },
+                writable: false,
+                configurable: false
+              });
+            } catch (err) {
+              window.open = function() {
+                return null;
+              };
+            }
+            if (window.navigation && window.navigation.addEventListener) {
+              origAddEventListener.call(
+                  window.navigation, 'navigate', function(e) {
+                    if (!e.cancelable || e.destination.sameDocument) return;
+                    if (e.downloadRequest !== null &&
+                        LOCAL_DOWNLOAD_URL_RE.test(e.destination.url)) {
+                      return;
+                    }
+                    origPreventDefault.call(e);
+                  }, true);
+            }
+            var iframeWinDesc = typeof HTMLIFrameElement !== 'undefined' &&
+                Object.getOwnPropertyDescriptor(
+                    HTMLIFrameElement.prototype, 'contentWindow');
+            if (iframeWinDesc && iframeWinDesc.get) {
+              Object.defineProperty(
+                  HTMLIFrameElement.prototype, 'contentWindow', {
+                    get: function() {
+                      return null;
+                    },
+                    configurable: false,
+                    enumerable: true
+                  });
+            }
+            var iframeDocDesc = typeof HTMLIFrameElement !== 'undefined' &&
+                Object.getOwnPropertyDescriptor(
+                    HTMLIFrameElement.prototype, 'contentDocument');
+            if (iframeDocDesc && iframeDocDesc.get) {
+              Object.defineProperty(
+                  HTMLIFrameElement.prototype, 'contentDocument', {
+                    get: function() {
+                      return null;
+                    },
+                    configurable: false,
+                    enumerable: true
+                  });
+            }
+            Document.prototype.createElement = function(tagName, options) {
+              if (FORBIDDEN_TAG_RE.test(String(tagName || ''))) {
+                return origCreateElement.call(this, 'div', options);
+              }
+              return origCreateElement.apply(this, arguments);
+            };
+            if (origCreateElementNS) {
+              Document.prototype.createElementNS = function(ns, qName, opts) {
+                var local = String(qName || '').split(':').pop();
+                if (FORBIDDEN_TAG_RE.test(local)) {
+                  return origCreateElement.call(this, 'div');
+                }
+                return origCreateElementNS.apply(this, arguments);
+              };
+            }
+            var origClick = HTMLElement.prototype.click;
+            HTMLElement.prototype.click = function() {
+              var link = findLinkFromNode(this, true);
+              if (link) {
+                var clickHref = (getLinkHref(link) || '').trim();
+                if (!clickHref.startsWith('#') &&
+                    !isLocalDownloadLink(link, clickHref)) {
+                  return;
+                }
+              }
+              inProgrammaticClick++;
+              try {
+                return origClick.apply(this, arguments);
+              } finally {
+                inProgrammaticClick--;
+              }
+            };
+            function isMetaRefreshAttr(el, name, value) {
+              return el && el.tagName &&
+                  el.tagName.toLowerCase() === 'meta' &&
+                  String(name || '').trim().toLowerCase() === 'http-equiv' &&
+                  isRefreshValue(value);
+            }
+            function validateIfActiveLink(el) {
+              if (!activeDeferredListeners || !isLinkElement(el) ||
+                  !hasLinkHref(el)) {
+                return;
+              }
+              var curHref = (getLinkHref(el) || '').trim();
+              if (!curHref.startsWith('#')) {
+                handleLiquidExternalLink(
+                    activeDeferredListeners.event, el, curHref,
+                    activeDeferredListeners.programmatic);
+              }
+            }
+            Element.prototype.setAttribute = function(name, value) {
+              if (isMetaRefreshAttr(this, name, value)) {
+                origElementRemove.call(this);
+                return;
+              }
+              var res = origSetAttribute.apply(this, arguments);
+              if (String(name || '').toLowerCase() === 'href') {
+                validateIfActiveLink(this);
+              }
+              return res;
+            };
+            if (origSetAttributeNS) {
+              Element.prototype.setAttributeNS = function(ns, name, value) {
+                var local = String(name || '');
+                if (local.includes(':')) local = local.split(':').pop();
+                if (isMetaRefreshAttr(this, local, value)) {
+                  origElementRemove.call(this);
+                  return;
+                }
+                var res = origSetAttributeNS.apply(this, arguments);
+                if (local.toLowerCase() === 'href') {
+                  validateIfActiveLink(this);
+                }
+                return res;
+              };
+            }
+            if (origSetAttributeNode) {
+              Element.prototype.setAttributeNode = function(attr) {
+                if (attr && isMetaRefreshAttr(this, attr.name, attr.value)) {
+                  origElementRemove.call(this);
+                  return null;
+                }
+                var res = origSetAttributeNode.apply(this, arguments);
+                if (attr && String(attr.name || '').toLowerCase() === 'href') {
+                  validateIfActiveLink(this);
+                }
+                return res;
+              };
+            }
+            if (origSetAttributeNodeNS) {
+              Element.prototype.setAttributeNodeNS = function(attr) {
+                var name = attr && (attr.localName || attr.name);
+                if (attr && isMetaRefreshAttr(this, name, attr.value)) {
+                  origElementRemove.call(this);
+                  return null;
+                }
+                var res = origSetAttributeNodeNS.apply(this, arguments);
+                if (String(name || '').toLowerCase() === 'href') {
+                  validateIfActiveLink(this);
+                }
+                return res;
+              };
+            }
+            function wrapHrefSetter(ctor) {
+              if (!ctor || !ctor.prototype) return;
+              var hrefDesc = Object.getOwnPropertyDescriptor(
+                  ctor.prototype, 'href');
+              if (hrefDesc && hrefDesc.set) {
+                Object.defineProperty(ctor.prototype, 'href', {
+                  get: hrefDesc.get,
+                  set: function(value) {
+                    hrefDesc.set.call(this, value);
+                    validateIfActiveLink(this);
+                  },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+            }
+            if (typeof HTMLAnchorElement !== 'undefined') {
+              wrapHrefSetter(HTMLAnchorElement);
+            }
+            if (typeof HTMLAreaElement !== 'undefined') {
+              wrapHrefSetter(HTMLAreaElement);
+            }
+            if (typeof HTMLMetaElement !== 'undefined') {
+              var desc = Object.getOwnPropertyDescriptor(
+                  HTMLMetaElement.prototype, 'httpEquiv');
+              if (desc && desc.set) {
+                Object.defineProperty(HTMLMetaElement.prototype, 'httpEquiv', {
+                  get: desc.get,
+                  set: function(value) {
+                    if (isRefreshValue(value)) {
+                      origElementRemove.call(this);
+                      return;
+                    }
+                    desc.set.call(this, value);
+                  },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+            }
+            Event.prototype.stopPropagation = function() {
+              if (validatingEvents && validatingEvents.has(this)) {
+                return;
+              }
+              return origStopPropagation.apply(this, arguments);
+            };
+            Event.prototype.stopImmediatePropagation = function() {
+              if (validatingEvents && validatingEvents.has(this)) {
+                return;
+              }
+              return origStopImmediatePropagation.apply(this, arguments);
+            };
+            var cancelBubbleDesc = Object.getOwnPropertyDescriptor(
+                Event.prototype, 'cancelBubble');
+            if (cancelBubbleDesc && cancelBubbleDesc.set) {
+              Object.defineProperty(Event.prototype, 'cancelBubble', {
+                get: cancelBubbleDesc.get,
+                set: function(val) {
+                  if (val && validatingEvents && validatingEvents.has(this)) {
+                    return;
+                  }
+                  cancelBubbleDesc.set.call(this, val);
+                },
+                configurable: true,
+                enumerable: true
+              });
+            }
+            function wrapAddEventListener(origFn) {
+              return function(type, listener, options) {
+                var res = origFn.apply(this, arguments);
+                if (activeDeferredListeners &&
+                    type === activeDeferredListeners.type) {
+                  origRemoveEventListener.call(
+                      window, activeDeferredListeners.type,
+                      activeDeferredListeners.fn, false);
+                  origAddEventListener.call(
+                      window, activeDeferredListeners.type,
+                      activeDeferredListeners.fn, false);
+                }
+                return res;
+              };
+            }
+            var origWinAdd = window.addEventListener || origAddEventListener;
+            EventTarget.prototype.addEventListener =
+                wrapAddEventListener(origAddEventListener);
+            if (typeof Window !== 'undefined' && Window.prototype) {
+              try {
+                Window.prototype.addEventListener =
+                    wrapAddEventListener(origWinAdd);
+              } catch (err) {}
+            }
+            try {
+              window.addEventListener = wrapAddEventListener(origWinAdd);
+            } catch (err) {}
+            function observeMutations(target) {
+              if (!target || typeof MutationObserver === 'undefined') return;
+              new MutationObserver(function(mutations) {
+                if (activeDeferredListeners) {
+                  for (var i = 0; i < mutations.length; i++) {
+                    var m = mutations[i];
+                    if (m.type === 'attributes' &&
+                        isLinkElement(m.target) &&
+                        hasLinkHref(m.target)) {
+                      var mHref = (getLinkHref(m.target) || '').trim();
+                      if (!mHref.startsWith('#')) {
+                        handleLiquidExternalLink(
+                            activeDeferredListeners.event, m.target, mHref,
+                            activeDeferredListeners.programmatic);
+                      }
+                    }
+                  }
+                }
+                purgeMetaRefresh(target);
+              }).observe(target, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['http-equiv', 'href']
+              });
+            }
+            observeMutations(document);
+            if (Element.prototype.attachShadow) {
+              var origAttachShadow = Element.prototype.attachShadow;
+              Element.prototype.attachShadow = function() {
+                var sr = origAttachShadow.apply(this, arguments);
+                observeMutations(sr);
+                return sr;
+              };
+            }
+          }
+
+          // Returns the URL of an absolute or protocol-relative href, or null.
+          function parseAbsoluteUrl(href) {
+            var candidate =
+                PROTOCOL_RELATIVE_RE.test(href) ? 'https:' + href : href;
+            try {
+              return new URL(candidate);
+            } catch (err) {
+              return null;
+            }
+          }
+
+          // Opens the link in a new tab through the Google redirector, which
+          // warns users before they leave for another site.
+          function routeThroughRedirector(link, url) {
+            var redirectUrl = url.href;
+            if (url.origin !== 'https://www.google.com' ||
+                url.pathname !== '/url' ||
+                !url.searchParams.has('q')) {
+              redirectUrl = 'https://www.google.com/url?q=' +
+                  encodeURIComponent(url.href);
+            }
+            origSetAttribute.call(link, 'href', redirectUrl);
+            origRemoveAttributeNS.call(link, XLINK_NS, 'href');
+            origSetAttribute.call(link, 'target', '_blank');
+            origSetAttribute.call(link, 'rel', 'noopener noreferrer');
+          }
+
+          // Lets Liquid App links open web pages only through the redirector,
+          // and blocks links with other protocols, such as javascript:.
+          // Context menu events rewrite or remove the link attribute so that
+          // "Open link in new tab" also goes through the redirector or is
+          // disabled.
+          function handleLiquidExternalLink(e, link, href, programmatic) {
+            if (isLocalDownloadLink(link, href)) return;
+            if (programmatic || inProgrammaticClick > 0) {
+              removeLinkHref(link);
+              origPreventDefault.call(e);
+              origStopPropagation.call(e);
+              return;
+            }
+            var url = parseAbsoluteUrl(href);
+            var protocol = url ? url.protocol : '';
+            if (protocol === 'http:' || protocol === 'https:') {
+              routeThroughRedirector(link, url);
+            } else if (protocol !== 'mailto:' && protocol !== 'tel:') {
+              if (e.type === 'contextmenu') {
+                removeLinkHref(link);
+              } else {
+                origPreventDefault.call(e);
+                origStopPropagation.call(e);
+              }
+            }
+          }
+
+          function validateLiquidLinkAfterBubble(e, anchor, programmatic) {
+            if (validatingEvents) {
+              validatingEvents.add(e);
+            }
+            var state = {
+              type: e.type,
+              fn: onBubble,
+              event: e,
+              programmatic: programmatic
+            };
+            activeDeferredListeners = state;
+            function checkTarget(ev) {
+              var targetLink = anchor || findLinkFromEvent(ev);
+              if (!targetLink || !hasLinkHref(targetLink)) return;
+              var latestHref = (getLinkHref(targetLink) || '').trim();
+              if (!latestHref.startsWith('#')) {
+                handleLiquidExternalLink(
+                    ev, targetLink, latestHref, programmatic);
+              }
+            }
+            Promise.resolve().then(function() {
+              checkTarget(e);
+              if (activeDeferredListeners === state) {
+                activeDeferredListeners = null;
+              }
+            });
+            function onBubble(ev) {
+              origRemoveEventListener.call(window, ev.type, onBubble, false);
+              checkTarget(ev);
+            }
+            origAddEventListener.call(window, e.type, onBubble, false);
+          }
+
+          function handleLinkClick(e) {
+            var programmatic = inProgrammaticClick > 0;
+            // Find the nearest ancestor link (handles nested icons, spans,
+            // svgs, and shadow DOM).
+            var anchor = findLinkFromEvent(e);
+            if (!anchor) {
+              if (isLiquid) {
+                validateLiquidLinkAfterBubble(e, null, programmatic);
+              }
+              return;
+            }
+
+            if (isLiquid) {
+              validateLiquidLinkAfterBubble(e, anchor, programmatic);
+            }
+            var href = (getLinkHref(anchor) || '').trim();
+            if (!href.startsWith('#')) {
+              if (isLiquid) {
+                handleLiquidExternalLink(e, anchor, href, programmatic);
+              }
+              return;
+            }
+            if (e.type === 'contextmenu') return;
+
+            // Prevent default <base target="_blank"> navigation to a new blank tab.
+            origPreventDefault.call(e);
+            if (!isLiquid) {
+              origStopPropagation.call(e);
+            }
+
+            // Handle empty anchor or top anchor.
+            if (href === '#' || href === '#top') {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              return;
+            }
+
+            // Resolve target element by id, falling back to legacy name attribute.
+            var targetId = href.slice(1);
+            try {
+              targetId = decodeURIComponent(targetId);
+            } catch (err) {}
+
+            var targetEl = document.getElementById(targetId);
+            if (!targetEl) {
+              try {
+                var escaped = window.CSS && CSS.escape ? CSS.escape(targetId) : targetId.replace(/["\\]/g, '\\$&');
+                targetEl = document.querySelector('[name="' + escaped + '"]');
+              } catch (err) {}
+            }
+
+            // Smoothly scroll to the target within the embed and update URL hash history.
+            if (targetEl) {
+              targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              if (window.history && window.history.pushState) {
+                window.history.pushState(null, '', href);
+              }
+            }
+          }
+
+          function initRender(nextIsLiquid) {
+            isLiquid = isLiquid || !!nextIsLiquid;
+            if (isLiquid) {
+              if (!guardsInstalled) {
+                guardsInstalled = true;
+                installNavigationGuards();
+              } else {
+                try {
+                  window.addEventListener =
+                      EventTarget.prototype.addEventListener;
+                } catch (err) {}
+              }
+              // document.open() removes the window's listeners, so this is
+              // added on every render.
+              origAddEventListener.call(window, 'beforeunload', function(e) {
+                origPreventDefault.call(e);
+                if (origWindowStop) {
+                  origWindowStop();
+                }
+              }, true);
+              purgeMetaRefresh(document);
+            }
+            // Listen during capturing phase to preempt <base target="_blank">.
+            origAddEventListener.call(
+                document, 'click', handleLinkClick, true);
+            if (isLiquid) {
+              origAddEventListener.call(
+                  document, 'auxclick', handleLinkClick, true);
+              origAddEventListener.call(
+                  document, 'contextmenu', handleLinkClick, true);
+            }
+          }
+
+          try {
+            Object.defineProperty(window, '__atariInitRender', {
+              value: initRender,
+              writable: false,
+              configurable: false
+            });
+          } catch (err) {
+            window.__atariInitRender = initRender;
+          }
+          initRender(false);
+        })();
+      </script>
+    
+
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KIM Online — മദ്റസ പരീക്ഷാ ഫലപ്രഖ്യാപന പോർട്ടൽ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600;700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+/* ==========================================================================
+   KIM ONLINE THEME — Deep Teal (#007965), Leaf Green (#72b863), Mint (#f0f7f4)
+   Zero External JS Dependencies • Pure Responsive CSS
+   ========================================================================== */
+:root{
+  --teal-dark:#004d40;
+  --teal:#007965;
+  --leaf:#72b863;
+  --leaf-soft:#a8e69a;
+  --mint:#f0f7f4;
+  --mint-bd:#c6e6d8;
+  --ink:#06362d;
+  --muted:#3e6d62;
+  --white:#ffffff;
+  --danger:#dc2626;
+  --gold:#fde047;
+  --shadow:0 8px 24px rgba(0,77,64,.09);
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Noto Sans Malayalam',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+body{background:var(--mint);color:var(--ink);min-height:100vh;display:flex;flex-direction:column;overflow-x:hidden;line-height:1.5}
+
+/* Header: Top Bar (Left Logo+KIM Online, Right Lock ONLY) + Center Madrasa Details */
+.site-header{background:linear-gradient(135deg,var(--teal-dark),var(--teal));color:var(--white);padding:12px 14px 10px;border-bottom:3px solid var(--leaf);position:sticky;top:0;z-index:40;box-shadow:0 4px 18px rgba(0,48,40,.22)}
+.wrap{max-width:1040px;width:100%;margin:0 auto}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand-left{display:flex;align-items:center;gap:10px;min-width:0}
+.logo-box{width:46px;height:46px;border-radius:13px;background:var(--white);border:2px solid var(--leaf);padding:3px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.logo-box img{width:100%;height:100%;object-fit:contain}
+.brand-title{font-size:19px;font-weight:900;letter-spacing:.2px;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-sub{font-size:10px;font-weight:800;color:var(--leaf-soft);letter-spacing:.6px;margin-top:-3px}
+.lock-btn{width:44px;height:44px;border-radius:13px;border:1.5px solid var(--leaf);background:rgba(0,38,30,.75);color:var(--gold);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s}
+.lock-btn:hover{background:var(--leaf);color:var(--white);border-color:var(--white)}
+
+/* Center-Aligned Selected Madrasa Details */
+.hdr-center-mad{text-align:center;margin-top:9px;padding:8px 12px;background:rgba(0,36,29,.42);border:1px solid rgba(114,184,99,.45);border-radius:14px}
+.hdr-mad-name{font-size:17.5px;font-weight:900;color:var(--white);line-height:1.3}
+.hdr-mad-meta{font-size:12.5px;font-weight:700;color:#d6f5e3;margin-top:2px}
+
+/* Madrasa Selector & 4 Public Navigation Tabs (Single-Row Horizontal Scroll) */
+.sel-wrap{margin-top:9px;padding-top:7px;border-top:1px solid rgba(255,255,255,.16)}
+.sel-lbl{text-align:center;font-size:12.5px;font-weight:800;color:var(--leaf-soft);margin-bottom:6px}
+.h-scroll{display:flex;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;gap:8px;padding:2px 2px 6px;scrollbar-width:thin;scrollbar-color:var(--leaf) rgba(0,0,0,.1)}
+.h-scroll::-webkit-scrollbar{height:5px}
+.h-scroll::-webkit-scrollbar-thumb{background:var(--leaf);border-radius:99px}
+.pill{flex:0 0 auto;padding:9px 15px;border-radius:12px;border:1.5px solid rgba(114,184,99,.62);background:rgba(0,42,34,.8);color:#e4f9ee;font-size:12.5px;font-weight:800;cursor:pointer;transition:.2s;white-space:nowrap}
+.pill.active,.pill:hover{background:var(--leaf);color:var(--white);border-color:var(--white);box-shadow:0 3px 10px rgba(0,0,0,.22)}
+.nav-strip{margin-top:4px;padding-top:7px;border-top:1px solid rgba(255,255,255,.14)}
+
+/* Main Container, Cards, Buttons & Layouts */
+main{max-width:1040px;width:100%;margin:16px auto 26px;padding:0 14px;flex:1}
+.card{background:var(--white);border-radius:18px;padding:18px;border:2px solid var(--mint-bd);box-shadow:var(--shadow);margin-bottom:14px}
+.badge{display:inline-block;padding:4px 12px;border-radius:99px;background:var(--leaf);color:var(--white);font-size:11.5px;font-weight:800}
+.btn{padding:11px 16px;border-radius:12px;border:none;background:linear-gradient(135deg,var(--teal),var(--leaf));color:var(--white);font-size:13.5px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:.2s;white-space:nowrap}
+.btn:hover{opacity:.92;transform:translateY(-1px)}
+.btn-dark{background:var(--teal-dark);color:#fff}
+.btn-leaf{background:var(--leaf);color:#fff}
+.btn-red{background:var(--danger);color:#fff;padding:8px 12px;font-size:12px}
+.btn-outline{background:#f0f7f4;color:var(--teal-dark);border:1.5px solid var(--teal)}
+.row-sb{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+
+/* Schedule Countdown & Disabled Section Gates */
+.gate-card{background:linear-gradient(145deg,var(--teal-dark),var(--teal));color:#fff;border-radius:22px;padding:30px 18px;border:2.5px solid var(--leaf);text-align:center;box-shadow:0 12px 30px rgba(0,77,64,.2)}
+.cd-grid{display:grid;grid-template-columns:repeat(4,minmax(62px,104px));gap:10px;justify-content:center;margin:18px auto 14px}
+.cd-box{background:rgba(0,32,26,.72);border:2px solid var(--gold);border-radius:14px;padding:12px 6px}
+.cd-num{font-size:28px;font-weight:900;color:var(--gold);line-height:1.1}
+.cd-lbl{font-size:11px;font-weight:800;color:#d6f5e3;margin-top:4px}
+.off-gate{background:#fff;border:2.5px dashed var(--teal);border-radius:22px;padding:42px 20px;text-align:center}
+
+/* Tab 1: Search Card (Center Header + Strictly Vertical Form) & Grade Card */
+.search-hero{background:linear-gradient(135deg,var(--teal-dark),var(--teal));color:#fff;border-radius:22px;padding:24px 18px;border:2px solid var(--leaf);text-align:center;margin-bottom:16px;box-shadow:0 10px 26px rgba(0,77,64,.16)}
+.hero-center{display:flex;flex-direction:column;align-items:center;gap:5px;margin-bottom:18px}
+.hero-logo{width:80px;height:80px;background:#fff;border-radius:20px;border:3px solid var(--leaf);padding:5px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.hero-logo img{width:100%;height:100%;object-fit:contain}
+.search-v{max-width:420px;width:100%;margin:0 auto;background:#fff;padding:16px;border-radius:18px;display:flex;flex-direction:column;gap:11px;border:2px solid var(--leaf);box-shadow:0 8px 22px rgba(0,0,0,.15)}
+.search-v select,.search-v input{width:100%;border:1.5px solid #95d5b2;border-radius:12px;padding:12px 14px;font-size:14.5px;font-weight:800;color:var(--teal-dark);background:#f7fdf9;outline:none;text-align:center}
+.search-v select:focus,.search-v input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,121,101,.14)}
+.search-v input{text-transform:uppercase}
+.search-v .btn{width:100%;padding:13px;font-size:15px}
+
+.status-pill{display:inline-flex;align-items:center;justify-content:center;padding:9px 24px;border-radius:99px;font-size:15px;font-weight:900;margin:13px auto 4px}
+.st-pass{background:#dcfce7;color:#166534;border:2px solid #22c55e}
+.st-fail{background:#fee2e2;color:#991b1b;border:2px solid #ef4444}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:10px;margin-top:14px}
+.stat-box{background:var(--mint);border:1.5px solid var(--mint-bd);border-radius:14px;padding:11px 8px;text-align:center}
+.stat-box .sl{font-size:11.5px;font-weight:800;color:var(--teal)}
+.stat-box .sv{font-size:15.5px;font-weight:900;color:var(--teal-dark);margin-top:3px}
+.stat-box.rk{background:linear-gradient(135deg,#fef9c3,#fde047);border-color:#eab308}
+.stat-box.at{background:linear-gradient(135deg,#e6f7ef,#d1fae5);border-color:#34d399}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+th{background:var(--teal);color:#fff;padding:10px 8px;text-align:left;white-space:nowrap}
+td{padding:9px 8px;border-bottom:1px solid #e2f5ea;font-weight:700}
+.rank-row{display:flex;align-items:center;justify-content:space-between;background:var(--mint);padding:11px 13px;border-radius:12px;border:1.5px solid var(--mint-bd);margin-top:8px;gap:8px}
+
+/* Admin Drawer/Modal & Forms */
+.admin-overlay{position:fixed;inset:0;background:rgba(0,32,26,.78);z-index:65;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:12px}
+.admin-shell{width:100%;max-width:1040px;background:var(--mint);border-radius:22px;border:2.5px solid var(--leaf);box-shadow:0 18px 46px rgba(0,0,0,.38);padding:14px;margin:6px auto 24px}
+.inp{width:100%;padding:9px 11px;border-radius:10px;border:1.5px solid #95d5b2;font-size:13px;font-weight:700;margin-top:4px;color:var(--ink);background:#fff;outline:none}
+.inp:focus{border-color:var(--teal)}
+.lbl{font-size:12px;font-weight:800;color:var(--teal-dark);display:block;margin-top:8px}
+.adm-tab{flex:0 0 auto;padding:9px 13px;border-radius:11px;border:1.5px solid #95d5b2;background:#fff;color:var(--teal-dark);font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+.adm-tab.active{background:var(--teal);color:#fff;border-color:var(--teal-dark)}
+.sec-h{font-size:15px;font-weight:900;color:var(--teal-dark);padding-bottom:8px;border-bottom:2px solid var(--mint-bd);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.tog-row{display:flex;align-items:center;justify-content:space-between;background:var(--mint);border:1.5px solid var(--mint-bd);border-radius:13px;padding:11px 14px;gap:10px}
+.sw{position:relative;display:inline-block;width:48px;height:26px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0}
+.slid{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;transition:.25s;border-radius:99px}
+.slid:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;transition:.25s;border-radius:50%}
+.sw input:checked+.slid{background:var(--teal)}
+.sw input:checked+.slid:before{transform:translateX(22px)}
+.sync-log{background:#062a23;color:#d6f5e3;border-radius:12px;padding:10px 12px;font-size:11.5px;font-family:ui-monospace,monospace;max-height:130px;overflow-y:auto;margin-top:10px;border:1.5px solid var(--leaf)}
+
+/* Modals, Toast & Footer */
+.hidden{display:none!important}
+.modal-bg{position:fixed;inset:0;background:rgba(0,32,26,.8);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
+.toast{position:fixed;bottom:18px;right:18px;background:var(--teal-dark);color:#fff;padding:11px 16px;border-radius:12px;border:2px solid var(--leaf);font-size:13px;font-weight:800;z-index:95;box-shadow:0 8px 24px rgba(0,0,0,.32);max-width:calc(100vw - 36px)}
+footer{background:var(--ink);color:#d6f5e3;text-align:center;padding:15px 12px;font-size:12.5px;font-weight:700;border-top:3px solid var(--leaf);margin-top:auto}
+</style>
+</head>
+<body>
+
+<!-- Toast Notification -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- ======================================================================
+     PUBLIC HEADER
+     - Top Bar: Left = KIM Logo + "KIM Online", Right = Lock Icon ONLY ("🔒")
+     - Center-Aligned Selected Madrasa Name + "📍 Place • Code"
+     - Madrasa Selector ("🕌 മദ്റസ തിരഞ്ഞെടുക്കുക" + Horizontal Swipeable Row)
+     - 4 Public Navigation Tabs (Horizontal Swipeable Row)
+     ====================================================================== -->
+<header class="site-header">
+  <div class="wrap">
+    <div class="hdr-top">
+      <div class="brand-left">
+        <div class="logo-box" id="hdrLogo"></div>
+        <div>
+          <div class="brand-title" id="hdrPortal">KIM Online</div>
+          <div class="brand-sub">EXAMINATION PORTAL</div>
+        </div>
+      </div>
+      <button type="button" id="lockBtn" class="lock-btn" title="അഡ്മിൻ പാനൽ" aria-label="Admin Panel" onclick="openAdminOrLogin()">🔒</button>
+    </div>
+
+    <!-- Center-Aligned Active Madrasa Info -->
+    <div class="hdr-center-mad">
+      <div class="hdr-mad-name" id="hdrMadName">മദ്റസത്തുൽ ഇസ്‌ലാം</div>
+      <div class="hdr-mad-meta" id="hdrMadMeta">📍 പൂക്കാട്ടിരി • KIM 3490</div>
+    </div>
+
+    <!-- Madrasa Selector Heading + Horizontal Scroll Buttons -->
+    <div class="sel-wrap">
+      <div class="sel-lbl">🕌 മദ്റസ തിരഞ്ഞെടുക്കുക</div>
+      <div class="h-scroll" id="madrasaBar"></div>
+    </div>
+
+    <!-- 4 Public Navigation Tabs ONLY (Horizontal Scroll) -->
+    <nav class="nav-strip h-scroll" aria-label="പ്രധാന നാവിഗേഷൻ">
+      <button type="button" class="pill active" id="nav-result" onclick="switchTab('result')">🔍 റിസൾട്ട് പരിശോധിക്കാം</button>
+      <button type="button" class="pill" id="nav-toppers" onclick="switchTab('toppers')">🏆 ടോപ്പേഴ്‌സ് ലിസ്റ്റ്</button>
+      <button type="button" class="pill" id="nav-poster" onclick="switchTab('poster')">🖼️ ടോപ്പർ പോസ്റ്റർ</button>
+      <button type="button" class="pill" id="nav-attendance" onclick="switchTab('attendance')">📅 ഹാജർ പട്ടിക</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- PUBLISHING SCHEDULE COUNTDOWN GATE (Locks ALL 4 public tabs until scheduled time) -->
+  <section id="gateCountdown" class="hidden">
+    <div class="gate-card">
+      <div class="hero-logo" id="cdLogo" style="margin:0 auto 10px"></div>
+      <h2 id="cdName" style="font-size:22px;font-weight:900;margin-top:4px"></h2>
+      <div id="cdMeta" style="font-size:13.5px;color:#d6f5e3;font-weight:800;margin-top:3px"></div>
+      <div id="cdExam" style="font-size:13px;color:#a8e69a;font-weight:800;margin-top:3px"></div>
+      <div id="cdMsg" style="font-size:16px;color:#fde047;font-weight:900;margin-top:14px"></div>
+      <div class="cd-grid">
+        <div class="cd-box"><div class="cd-num" id="cdD">00</div><div class="cd-lbl">ദിവസം</div></div>
+        <div class="cd-box"><div class="cd-num" id="cdH">00</div><div class="cd-lbl">മണിക്കൂർ</div></div>
+        <div class="cd-box"><div class="cd-num" id="cdM">00</div><div class="cd-lbl">മിനിറ്റ്</div></div>
+        <div class="cd-box"><div class="cd-num" id="cdS">00</div><div class="cd-lbl">സെക്കൻഡ്</div></div>
+      </div>
+      <div id="cdTarget" style="font-size:12.5px;color:#e0f7ec;font-weight:800;background:rgba(0,0,0,.22);display:inline-block;padding:6px 15px;border-radius:99px"></div>
+    </div>
+  </section>
+
+  <!-- INDIVIDUAL SECTION DISABLED GATE -->
+  <section id="gateDisabled" class="hidden">
+    <div class="off-gate">
+      <div style="font-size:46px;margin-bottom:8px">🔒</div>
+      <h2 style="font-size:19px;font-weight:900;color:#004d40">ഈ വിഭാഗം താൽക്കാലികമായി ലഭ്യമല്ല</h2>
+      <p id="offGateDesc" style="font-size:13.5px;font-weight:700;color:#007965;margin-top:6px"></p>
+    </div>
+  </section>
+
+  <!-- TAB 1: RESULT SEARCH & CONDITIONAL GRADE CARD -->
+  <section id="tab-result">
+    <div class="search-hero">
+      <div class="hero-center">
+        <div class="hero-logo" id="bnrLogo"></div>
+        <h1 id="bnrName" style="font-size:22px;font-weight:900;line-height:1.3;margin-top:4px"></h1>
+        <div id="bnrMeta" style="font-size:13.5px;color:#d6f5e3;font-weight:800"></div>
+        <div id="bnrExam" style="font-size:13px;color:#a8e69a;font-weight:800;margin-top:2px"></div>
+      </div>
+      <!-- Strictly Vertical Search Form -->
+      <div class="search-v">
+        <select id="searchCls" aria-label="ക്ലാസ്സ് തിരഞ്ഞെടുക്കുക" onchange="clearResult()"></select>
+        <input id="regInput" type="text" placeholder="ഉദാ: REG101" aria-label="രജിസ്റ്റർ നമ്പർ" onkeydown="if(event.key==='Enter')searchResult()">
+        <button type="button" class="btn" onclick="searchResult()">🔍 ഫലം കാണുക</button>
+      </div>
+    </div>
+    <!-- Conditional Result Area (Remains empty until '🔍 ഫലം കാണുക' is clicked) -->
+    <div id="resultBox"></div>
+  </section>
+
+  <!-- TAB 2: TOPPERS LIST -->
+  <section id="tab-toppers" class="hidden">
+    <div class="card row-sb" style="background:linear-gradient(135deg,#004d40,#007965);color:#fff">
+      <div>
+        <span class="badge" id="topBadge"></span>
+        <h2 style="font-size:18px;font-weight:900;margin-top:4px">🏆 ക്ലാസ്സ് ടോപ്പേഴ്‌സ് ലിസ്റ്റ്</h2>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="topClsFilter" class="inp" style="width:auto;margin:0;min-width:155px" onchange="renderTop3('toppers')"></select>
+        <button type="button" class="btn btn-leaf" onclick="downloadListPdf('toppers')">📥 PDF Download</button>
+      </div>
+    </div>
+    <div id="toppersGrid" class="grid2"></div>
+  </section>
+
+  <!-- TAB 3: TOPPER POSTER (1080×1440 HD PNG) -->
+  <section id="tab-poster" class="hidden">
+    <div class="card grid2" style="align-items:start">
+      <div>
+        <h2 style="font-size:18px;font-weight:900;color:#004d40;margin-bottom:8px">🖼️ ടോപ്പർ പോസ്റ്റർ (1080×1440 HD)</h2>
+        <label class="lbl">ക്ലാസ്സ് തിരഞ്ഞെടുക്കുക:</label>
+        <select id="pClsSel" class="inp" onchange="fillPosterStudents();drawTopperPoster()"></select>
+        <label class="lbl">വിദ്യാർത്ഥിയെ തിരഞ്ഞെടുക്കുക:</label>
+        <select id="pStuSel" class="inp" onchange="drawTopperPoster()"></select>
+        <label class="lbl">കളർ തീം:</label>
+        <select id="pThemeSel" class="inp" onchange="drawTopperPoster()">
+          <option value="kim">🌿 KIM Teal &amp; Leaf Green</option>
+          <option value="emerald">👑 Royal Emerald &amp; Gold</option>
+          <option value="forest">✨ Deep Forest &amp; Gold</option>
+        </select>
+        <div style="margin-top:10px;background:#f0f7f4;padding:11px;border-radius:12px;border:1.5px solid #95d5b2">
+          <div style="font-size:12.5px;font-weight:800;margin-bottom:6px;color:#004d40">📸 ഫോട്ടോ ചേർക്കുക:</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="file" id="stuPhotoInp" accept="image/*" onchange="uploadStuPhoto(event)" style="font-size:12px;flex:1">
+            <button type="button" class="btn btn-red" onclick="clearStuPhoto()">🗑️</button>
+          </div>
+        </div>
+        <button type="button" class="btn" style="width:100%;margin-top:12px;padding:13px" onclick="downloadCanvasPng('posterCanvas','KIM_Topper_Poster.png')">
+          📥 ഇമേജ് ഡൗൺലോഡ് (PNG)
+        </button>
+      </div>
+      <div style="text-align:center">
+        <canvas id="posterCanvas" width="1080" height="1440" style="max-width:340px;width:100%;height:auto;border-radius:16px;box-shadow:0 10px 26px rgba(0,0,0,.2);border:3px solid #72b863"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 4: ATTENDANCE LIST -->
+  <section id="tab-attendance" class="hidden">
+    <div class="card row-sb" style="background:linear-gradient(135deg,#004d40,#007965);color:#fff">
+      <div>
+        <span class="badge" id="attBadge"></span>
+        <h2 style="font-size:18px;font-weight:900;margin-top:4px">📅 ഹാജർ പട്ടിക</h2>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="attClsFilter" class="inp" style="width:auto;margin:0;min-width:155px" onchange="renderTop3('attendance')"></select>
+        <button type="button" class="btn btn-leaf" onclick="downloadListPdf('attendance')">📥 PDF Download</button>
+      </div>
+    </div>
+    <div id="attGrid" class="grid2"></div>
+  </section>
+</main>
+
+<!-- Editable Website Footer -->
+<footer id="webFooter">KIM Online — മദ്റസ പരീക്ഷാ ഫലപ്രഖ്യാപന പോർട്ടൽ © 2026</footer>
+
+<!-- ======================================================================
+     ADMIN PANEL MODAL / DRAWER (8 Tabbed Sections + Live Auto Cloud Save Badge)
+     ====================================================================== -->
+<div id="adminOverlay" class="admin-overlay hidden">
+  <div class="admin-shell">
+    <!-- Admin Top Header -->
+    <div class="card row-sb" style="background:linear-gradient(135deg,#00382e,#006655);color:#fff;margin-bottom:12px">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="badge">ADMIN PANEL</span>
+          <span class="badge" id="cloudBadge" style="background:#002620;border:1.5px solid #72b863;color:#a8e69a">
+            ☁️ ഓട്ടോ ക്ലൗഡ് സേവ്: ലോക്കൽ സേവ് ആയി
+          </span>
+        </div>
+        <h2 style="font-size:17.5px;font-weight:900;margin-top:5px">🛠️ KIM Online അഡ്മിൻ കൺട്രോൾ</h2>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-red" onclick="doLogout()">🚪 ലോഗൗട്ട്</button>
+        <button type="button" class="btn btn-leaf" onclick="closeAdmin()">✖️ ക്ലോസ്</button>
+      </div>
+    </div>
+
+    <!-- 8 Horizontal Admin Sub-Tabs -->
+    <div class="h-scroll" style="margin-bottom:10px">
+      <button type="button" class="adm-tab active" id="aTab-1" onclick="showAdmTab(1)">⏰ ഷെഡ്യൂൾ &amp; കൺട്രോൾ</button>
+      <button type="button" class="adm-tab" id="aTab-2" onclick="showAdmTab(2)">🎨 ബ്രാൻഡിംഗ് &amp; ഫൂട്ടർ</button>
+      <button type="button" class="adm-tab" id="aTab-3" onclick="showAdmTab(3)">📢 അനൗൺസ്മെന്റ് പോസ്റ്റർ</button>
+      <button type="button" class="adm-tab" id="aTab-4" onclick="showAdmTab(4)">🔐 ലോഗിൻ</button>
+      <button type="button" class="adm-tab" id="aTab-5" onclick="showAdmTab(5)">🕌 മദ്റസകൾ</button>
+      <button type="button" class="adm-tab" id="aTab-6" onclick="showAdmTab(6)">🏫 ക്ലാസ്സ് &amp; വിഷയങ്ങൾ</button>
+      <button type="button" class="adm-tab" id="aTab-7" onclick="showAdmTab(7)">👨‍🎓 വിദ്യാർത്ഥികൾ</button>
+      <button type="button" class="adm-tab" id="aTab-8" onclick="showAdmTab(8)">☁️ ഷീറ്റ് സിങ്ക് &amp; GitHub</button>
+    </div>
+
+    <!-- 1. SCHEDULE & SECTION ON/OFF CONTROLS -->
+    <div class="card a-pane" id="aPane-1">
+      <div class="sec-h">
+        <span>⏰ 1. പബ്ലിഷിംഗ് ഷെഡ്യൂൾ &amp; വിഭാഗം കൺട്രോൾ</span>
+        <div style="display:flex;gap:7px">
+          <button type="button" class="btn btn-leaf" onclick="setAllVis(true)">✅ എല്ലാം ഓൺ</button>
+          <button type="button" class="btn btn-red" onclick="setAllVis(false)">⛔ എല്ലാം ഓഫ്</button>
+        </div>
+      </div>
+      <div class="grid2" style="margin-bottom:14px">
+        <div class="tog-row"><div><strong>🔍 റിസൾട്ട് പരിശോധിക്കാം</strong><div id="vs-result" style="font-size:11.5px;font-weight:800"></div></div><label class="sw"><input type="checkbox" id="sw-result" onchange="setVis('result',this.checked)"><span class="slid"></span></label></div>
+        <div class="tog-row"><div><strong>🏆 ടോപ്പേഴ്‌സ് ലിസ്റ്റ്</strong><div id="vs-toppers" style="font-size:11.5px;font-weight:800"></div></div><label class="sw"><input type="checkbox" id="sw-toppers" onchange="setVis('toppers',this.checked)"><span class="slid"></span></label></div>
+        <div class="tog-row"><div><strong>🖼️ ടോപ്പർ പോസ്റ്റർ</strong><div id="vs-poster" style="font-size:11.5px;font-weight:800"></div></div><label class="sw"><input type="checkbox" id="sw-poster" onchange="setVis('poster',this.checked)"><span class="slid"></span></label></div>
+        <div class="tog-row"><div><strong>📅 ഹാജർ പട്ടിക</strong><div id="vs-attendance" style="font-size:11.5px;font-weight:800"></div></div><label class="sw"><input type="checkbox" id="sw-attendance" onchange="setVis('attendance',this.checked)"><span class="slid"></span></label></div>
+      </div>
+      <div style="background:#f0f7f4;border:2px solid #95d5b2;border-radius:14px;padding:14px">
+        <div class="row-sb">
+          <div>
+            <strong style="color:#004d40">⏳ പബ്ലിഷിംഗ് ഷെഡ്യൂൾ (Live Countdown Lock)</strong>
+            <div style="font-size:12px;color:#3e6d62">ഓൺ ആക്കിയാൽ നിശ്ചയിച്ച സമയം എത്തുന്നതുവരെ 4 പൊതു ടാബുകളിലും ലൈവ് കൗണ്ട്ഡൗൺ കാണിക്കും.</div>
+          </div>
+          <label class="sw"><input type="checkbox" id="aSchedOn" onchange="CFG.schedule.enabled=this.checked;onAdminMutate();updSchedInfo()"><span class="slid"></span></label>
+        </div>
+        <div class="grid2" style="margin-top:8px">
+          <div><label class="lbl">പ്രസിദ്ധീകരിക്കുന്ന തീയതി &amp; സമയം:</label><input type="datetime-local" id="aSchedDt" class="inp" onchange="CFG.schedule.datetime=this.value;onAdminMutate();updSchedInfo()"></div>
+          <div><label class="lbl">കൗണ്ട്ഡൗൺ സന്ദേശം:</label><input id="aSchedMsg" class="inp" oninput="CFG.schedule.message=this.value;onAdminMutate()"></div>
+        </div>
+        <div id="aSchedInfo" style="margin-top:10px;padding:9px 12px;border-radius:10px;font-size:12px;font-weight:800;background:#fff;border:1.5px solid #c6e6d8"></div>
+      </div>
+    </div>
+
+    <!-- 2. BRANDING, LOGO, CALLIGRAPHY & FOOTERS -->
+    <div class="card a-pane hidden" id="aPane-2">
+      <div class="sec-h"><span>🎨 2. ബ്രാൻഡിംഗ്, ലോഗോ, കാലിഗ്രഫി &amp; ഫൂട്ടർ</span></div>
+      <div class="grid3">
+        <div><label class="lbl">പോർട്ടൽ പേര് (Portal Name):</label><input id="aPortal" class="inp" oninput="CFG.portalName=this.value;onAdminMutate();refreshUI()"></div>
+        <div><label class="lbl">പരീക്ഷാ തലക്കെട്ട് (Exam Title):</label><input id="aExam" class="inp" oninput="CFG.examTitle=this.value;onAdminMutate();refreshUI()"></div>
+        <div><label class="lbl">വെബ്സൈറ്റ് ഫൂട്ടർ:</label><input id="aWebFoot" class="inp" oninput="CFG.webFooter=this.value;onAdminMutate();refreshUI()"></div>
+        <div><label class="lbl">ടോപ്പർ പോസ്റ്റർ തലക്കെട്ട്:</label><input id="aPHead" class="inp" oninput="CFG.posterHeadline=this.value;onAdminMutate();drawTopperPoster()"></div>
+        <div><label class="lbl">ടോപ്പർ പോസ്റ്റർ ഉപവാചകം:</label><input id="aPSub" class="inp" oninput="CFG.posterSubtext=this.value;onAdminMutate();drawTopperPoster()"></div>
+        <div><label class="lbl">പോസ്റ്റർ ഇടത് ഫൂട്ടർ:</label><input id="aFootL" class="inp" oninput="CFG.posterFooterL=this.value;onAdminMutate();drawTopperPoster()"></div>
+        <div><label class="lbl">പോസ്റ്റർ വലത് ഫൂട്ടർ:</label><input id="aFootR" class="inp" oninput="CFG.posterFooterR=this.value;onAdminMutate();drawTopperPoster()"></div>
+        <div><label class="lbl">✒️ കാലിഗ്രഫി വാചകം:</label><input id="aCalTxt" class="inp" oninput="CFG.calligText=this.value;onAdminMutate();drawTopperPoster()"></div>
+        <div>
+          <label class="lbl">📏 കാലിഗ്രഫി സൈസ് (<span id="calPct">100</span>%):</label>
+          <input id="aCalScale" type="range" min="50" max="200" class="inp" oninput="CFG.calligScale=Number(this.value);document.getElementById('calPct').textContent=this.value;onAdminMutate();drawTopperPoster()">
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div style="background:#f0f7f4;padding:12px;border-radius:12px;border:1.5px solid #c6e6d8">
+          <strong style="font-size:13px;color:#004d40">🖼️ ലോഗോ (അപ്‌ലോഡ് അല്ലെങ്കിൽ നേരിട്ടുള്ള URL)</strong>
+          <label class="lbl">📤 ഫയൽ അപ്‌ലോഡ് (ഓട്ടോ-കംപ്രസ്സ് &lt;18KB):</label>
+          <div style="display:flex;gap:6px"><input type="file" accept="image/*" class="inp" onchange="uploadCompressedImg(event,'logo',220)"><button type="button" class="btn btn-red" style="margin-top:4px" onclick="resetLogo()">🔄</button></div>
+          <label class="lbl">🌐 അല്ലെങ്കിൽ Logo Image URL:</label>
+          <input id="aLogoUrl" class="inp" placeholder="https://.../logo.png" onchange="setLogoUrl(this.value)">
+        </div>
+        <div style="background:#f0f7f4;padding:12px;border-radius:12px;border:1.5px solid #c6e6d8">
+          <strong style="font-size:13px;color:#004d40">✒️ കാലിഗ്രഫി ഇമേജ് (അപ്‌ലോഡ് അല്ലെങ്കിൽ URL)</strong>
+          <label class="lbl">📤 ഫയൽ അപ്‌ലോഡ് (ഓട്ടോ-കംപ്രസ്സ് &lt;18KB):</label>
+          <div style="display:flex;gap:6px"><input type="file" accept="image/*" class="inp" onchange="uploadCompressedImg(event,'callig',380)"><button type="button" class="btn btn-red" style="margin-top:4px" onclick="clearCallig()">🗑️</button></div>
+          <label class="lbl">🌐 അല്ലെങ്കിൽ Calligraphy Image URL:</label>
+          <input id="aCalUrl" class="inp" placeholder="https://.../calligraphy.png" onchange="setCalligUrl(this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. ANNOUNCEMENT POSTER STUDIO (1080×1440 HD + REAL SCANNABLE QR) -->
+    <div class="card a-pane hidden" id="aPane-3">
+      <div class="sec-h"><span>📢 3. അനൗൺസ്മെന്റ് പോസ്റ്റർ സ്റ്റുഡിയോ (1080×1440 HD)</span></div>
+      <div class="grid2" style="align-items:start">
+        <div>
+          <label class="lbl">മുകളിലെ ടാഗ് (Top Tag):</label><input id="aAnnTag" class="inp" oninput="CFG.ann.tag=this.value;onAdminMutate();drawAnnPoster()">
+          <label class="lbl">പ്രധാന തലക്കെട്ട് (Main Title):</label><input id="aAnnTitle" class="inp" oninput="CFG.ann.title=this.value;onAdminMutate();drawAnnPoster()">
+          <label class="lbl">ഉപതലക്കെട്ട് (Subtitle):</label><input id="aAnnSub" class="inp" oninput="CFG.ann.subtitle=this.value;onAdminMutate();drawAnnPoster()">
+          <label class="lbl">തീയതി &amp; സമയം ഹൈലൈറ്റ്:</label><input id="aAnnDate" class="inp" oninput="CFG.ann.dateTime=this.value;onAdminMutate();drawAnnPoster()">
+          <label class="lbl">അറിയിപ്പ് സന്ദേശം (Message Body):</label><textarea id="aAnnMsg" rows="3" class="inp" oninput="CFG.ann.message=this.value;onAdminMutate();drawAnnPoster()"></textarea>
+          <label class="lbl">റിസൾട്ട് വെബ്സൈറ്റ് ലിങ്ക് (URL &amp; QR Data):</label><input id="aAnnUrl" class="inp" oninput="CFG.ann.url=this.value;onAdminMutate();drawAnnPoster()">
+          <label class="lbl">താഴ്ഭാഗത്തെ ഫൂട്ടർ (Bottom Footer):</label><input id="aAnnFoot" class="inp" oninput="CFG.ann.footer=this.value;onAdminMutate();drawAnnPoster()">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;margin-top:10px;cursor:pointer">
+            <input type="checkbox" id="aAnnQrOn" onchange="CFG.ann.showQR=this.checked;onAdminMutate();drawAnnPoster()"> പോസ്റ്ററിൽ സ്കാൻ ചെയ്യാവുന്ന QR കോഡ് കാണിക്കുക
+          </label>
+          <label class="lbl">📤 കസ്റ്റം QR ഇമേജ് അപ്‌ലോഡ് (Optional — ഇല്ലെങ്കിൽ URL-ൽ നിന്ന് ഓട്ടോ QR):</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="file" accept="image/*" class="inp" onchange="uploadCompressedImg(event,'qr',240)">
+            <button type="button" class="btn btn-red" style="margin-top:4px" onclick="clearCustomQr()">🗑️</button>
+          </div>
+          <button type="button" class="btn" style="width:100%;margin-top:12px;padding:13px" onclick="downloadCanvasPng('annCanvas','KIM_Announcement_Poster.png')">
+            📥 അനൗൺസ്മെന്റ് പോസ്റ്റർ ഡൗൺലോഡ് (PNG)
+          </button>
+        </div>
+        <div style="text-align:center">
+          <canvas id="annCanvas" width="1080" height="1440" style="max-width:340px;width:100%;height:auto;border-radius:16px;box-shadow:0 10px 26px rgba(0,0,0,.22);border:3px solid #72b863"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. ADMIN LOGIN CREDENTIALS -->
+    <div class="card a-pane hidden" id="aPane-4">
+      <div class="sec-h"><span>🔐 4. അഡ്മിൻ യൂസർനെയിം &amp; പാസ്‌വേഡ് മാറ്റുക</span></div>
+      <div class="grid3" style="align-items:end">
+        <div><label class="lbl">പുതിയ യൂസർനെയിം:</label><input id="aUser" class="inp"></div>
+        <div><label class="lbl">പുതിയ പാസ്‌വേഡ്:</label><input id="aPass" type="text" class="inp"></div>
+        <div><button type="button" class="btn" style="width:100%" onclick="saveCreds()">💾 അപ്‌ഡേറ്റ് ചെയ്യുക</button></div>
+      </div>
+    </div>
+
+    <!-- 5. MADRASA BRANCHES CRUD -->
+    <div class="card a-pane hidden" id="aPane-5">
+      <div class="sec-h">
+        <span>🕌 5. മദ്റസ ബ്രാഞ്ചുകൾ (Add / Edit / Delete)</span>
+        <button type="button" class="btn" onclick="addBranch()">+ പുതിയ മദ്റസ</button>
+      </div>
+      <div style="font-size:11.5px;font-weight:800;color:#3e6d62;margin-bottom:8px">കോഡ് (Code) | മദ്റസയുടെ പേര് (Name) | സ്ഥലം (Place)</div>
+      <div id="aBranchList"></div>
+    </div>
+
+    <!-- 6. PER-MADRASA CLASSES & PER-CLASS SUBJECTS -->
+    <div class="card a-pane hidden" id="aPane-6">
+      <div class="sec-h">
+        <span>🏫 6. മദ്റസ തിരിച്ചുള്ള ക്ലാസ്സുകൾ &amp; വിഷയങ്ങൾ</span>
+        <select id="aClsMad" class="inp" style="width:auto;margin:0;min-width:210px" onchange="renderAdmClsSub()"></select>
+      </div>
+      <div class="grid2">
+        <div style="background:#f0f7f4;padding:12px;border-radius:12px;border:1.5px solid #c6e6d8">
+          <div class="row-sb" style="margin-bottom:8px"><strong>ക്ലാസ്സുകൾ:</strong><button type="button" class="btn" onclick="addCls()">+ ക്ലാസ്സ്</button></div>
+          <div id="aClsList"></div>
+        </div>
+        <div style="background:#f0f7f4;padding:12px;border-radius:12px;border:1.5px solid #c6e6d8">
+          <div class="row-sb" style="margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:6px"><strong>വിഷയങ്ങൾ:</strong><select id="aSubCls" class="inp" style="width:auto;margin:0;padding:5px 8px" onchange="renderAdmSubs()"></select></div>
+            <button type="button" class="btn" onclick="addSub()">+ വിഷയം</button>
+          </div>
+          <div style="font-size:11px;font-weight:800;color:#3e6d62;margin-bottom:6px">കീ (Sub1–10) | വിഷയം | Max | Pass</div>
+          <div id="aSubList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. STUDENTS CRUD -->
+    <div class="card a-pane hidden" id="aPane-7">
+      <div class="sec-h">
+        <span>👨‍🎓 7. വിദ്യാർത്ഥികളുടെ മാർക്കും ഹാജരും</span>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <select id="aStuMad" class="inp" style="width:auto;margin:0" onchange="renderAdmStuSec()"></select>
+          <select id="aStuCls" class="inp" style="width:auto;margin:0" onchange="renderAdmStuTbl()"></select>
+          <button type="button" class="btn" onclick="addStu()">+ പുതിയ വിദ്യാർത്ഥി</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto"><table id="aStuTbl"></table></div>
+    </div>
+
+    <!-- 8. GOOGLE SHEETS 2-WAY AUTO-SYNC & GITHUB INDEX.HTML EXPORT -->
+    <div class="card a-pane hidden" id="aPane-8">
+      <div class="sec-h"><span>☁️ 8. ഗൂഗിൾ ഷീറ്റ് 2-Way ഓട്ടോ-സിങ്ക് &amp; GitHub Export</span></div>
+      <div class="grid2" style="align-items:end">
+        <div>
+          <label class="lbl">Google Apps Script Web App URL:</label>
+          <input id="aSheetUrl" class="inp" placeholder="https://script.google.com/macros/s/.../exec" oninput="setScriptUrl(this.value)">
+        </div>
+        <div>
+          <label class="lbl">ഓട്ടോ-സിങ്ക് ഇടവേള (Polling Interval):</label>
+          <select id="aSyncInt" class="inp" onchange="CFG.syncInterval=Number(this.value);onAdminMutate();setupAutoSync()">
+            <option value="30">ഓരോ 30 സെക്കൻഡിലും</option>
+            <option value="60">ഓരോ 1 മിനിറ്റിലും</option>
+            <option value="180">ഓരോ 3 മിനിറ്റിലും</option>
+            <option value="300">ഓരോ 5 മിനിറ്റിലും</option>
+          </select>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;margin-top:10px;cursor:pointer">
+        <input type="checkbox" id="aAutoSync" onchange="CFG.autoSync=this.checked;onAdminMutate();setupAutoSync()"> 🔄 ഗൂഗിൾ ഷീറ്റ് ഓട്ടോ-സിങ്ക് (Auto-Sync ON/OFF)
+      </label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button type="button" class="btn" onclick="pullFromSheet(false,true)">⬇️ Pull from Sheet</button>
+        <button type="button" class="btn btn-leaf" onclick="pushToSheet(false)">⬆️ Push to Sheet</button>
+        <button type="button" class="btn btn-red" onclick="document.getElementById('resetModal').classList.remove('hidden')">🔄 Reset to Default</button>
+      </div>
+      <div class="sync-log" id="syncLog">ℹ️ സിങ്ക് ലോഗ്: ഗൂഗിൾ ആപ്പ് സ്ക്രിപ്റ്റ് Web App URL നൽകുക.</div>
+      <div style="margin-top:14px;background:#00382e;color:#fff;padding:15px;border-radius:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <strong style="color:#fde047">🚀 GitHub Ready Export (ഒറ്റത്തവണ അപ്‌ലോഡ്)</strong>
+          <div style="font-size:12px;color:#d6f5e3;margin-top:2px">Web App URL, ബ്രാൻഡിംഗ്, സെറ്റിംഗ്സ്, വിദ്യാർത്ഥി ഡാറ്റ എന്നിവ ഉൾപ്പെടുത്തിയ index.html ഡൗൺലോഡ് ചെയ്യുക.</div>
+        </div>
+        <button type="button" class="btn btn-leaf" onclick="exportGitHub()">📦 GitHub index.html ഡൗൺലോഡ്</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN LOGIN MODAL -->
+<div id="loginModal" class="modal-bg hidden">
+  <div class="card" style="width:100%;max-width:350px;margin:0;border:2.5px solid #72b863">
+    <h3 style="font-size:18px;font-weight:900;color:#004d40;margin-bottom:8px">🔒 അഡ്മിൻ ലോഗിൻ</h3>
+    <input id="lUser" type="text" class="inp" placeholder="Username">
+    <input id="lPass" type="password" class="inp" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="lErr" class="hidden" style="color:#dc2626;font-size:12px;font-weight:800;margin-top:8px">❌ തെറ്റായ യൂസർനെയിം അല്ലെങ്കിൽ പാസ്‌വേഡ്!</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn btn-dark" onclick="document.getElementById('loginModal').classList.add('hidden')">റദ്ദാക്കുക</button>
+      <button type="button" class="btn" onclick="doLogin()">ലോഗിൻ</button>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOM RESET CONFIRMATION MODAL (Never uses window.confirm) -->
+<div id="resetModal" class="modal-bg hidden">
+  <div class="card" style="width:100%;max-width:370px;margin:0;border:2.5px solid #dc2626">
+    <h3 style="font-size:17px;font-weight:900;color:#991b1b;margin-bottom:8px">⚠️ Reset to Default?</h3>
+    <p style="font-size:13px;font-weight:700;color:#334155">ലോക്കൽ മാറ്റങ്ങളെല്ലാം നീക്കം ചെയ്ത് ഡിഫോൾട്ട് ഡാറ്റയിലേക്ക് തിരികെ പോകണോ?</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn btn-dark" onclick="document.getElementById('resetModal').classList.add('hidden')">റദ്ദാക്കുക</button>
+      <button type="button" class="btn btn-red" onclick="confirmReset()">🔄 Reset ചെയ്യുക</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Capture clean HTML snapshot BEFORE any runtime DOM modifications for GitHub Export
+const PRISTINE_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+// Built-in crisp SVG KIM Logo (Deep Teal Dome & Open Book + Leaf Green 'M' Emblem)
+const KIM_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="40" fill="#ffffff"/><path d="M40 132 C56 120 66 104 66 78 L66 70 L94 70 C107 58 115 46 120 37 C125 46 133 58 146 70 L174 70 L174 78 C174 104 184 120 200 132" fill="none" stroke="#007965" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><rect x="113" y="75" width="14" height="62" rx="3" fill="#007965"/><path d="M120 115 L150 137 L124 137 Z" fill="#007965"/><path d="M89 139 L89 91 L120 116 L151 91 L151 127" fill="none" stroke="#72b863" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/><path d="M36 156 Q82 138 118 178 Q82 156 36 156 Z" fill="#007965"/><path d="M204 156 Q158 138 122 178 Q158 156 204 156 Z" fill="#007965"/><path d="M30 171 Q82 156 120 194 Q158 156 210 171" fill="none" stroke="#72b863" stroke-width="11" stroke-linecap="round"/></svg>`;
+const DEFAULT_LOGO_URI = 'data:image/svg+xml;utf8,' + encodeURIComponent(KIM_LOGO_SVG);
+
+const DEFAULT_CLASS_SUBS = () => [
+  { key: 'Sub1', name: 'ഖുർആൻ', max: 50, pass: 18 },
+  { key: 'Sub2', name: 'ഫിഖ്ഹ്', max: 50, pass: 18 },
+  { key: 'Sub3', name: 'അഖീദ', max: 50, pass: 18 },
+  { key: 'Sub4', name: 'താരീഖ്', max: 50, pass: 18 },
+  { key: 'Sub5', name: 'ദുറൂസ്', max: 50, pass: 18 }
+];
+
+/*__KIM_STATE_START__*/
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAKxfymTx6f-TZe8c9RiPasA0YUBvD9vp19cL1yhiMC5IGhG0dbih5di2iU-N1HjIPig/exec";
+const DEFAULT_CONFIG = {
+  "portalName": "KIM Online",
+  "examTitle": "വാർഷിക പൊതു പരീക്ഷാ ഫലം 2026",
+  "adminUser": "admin",
+  "adminPass": "1234",
+  "logo": "",
+  "calligText": "അഭിനന്ദനങ്ങൾ",
+  "calligImg": "",
+  "calligScale": 100,
+  "posterHeadline": "അഭിനന്ദനങ്ങൾ!",
+  "posterSubtext": "ഉന്നത വിജയം നേടിയ പ്രതിഭയ്ക്ക് ഹൃദയം നിറഞ്ഞ ആശംസകൾ",
+  "posterFooterL": "KIM Online Portal",
+  "posterFooterR": "വാർഷിക പൊതു പരീക്ഷ 2026",
+  "webFooter": "KIM Online — മദ്റസ പരീക്ഷാ ഫലപ്രഖ്യാപന പോർട്ടൽ © 2026",
+  "ann": {
+    "tag": "📢 പ്രധാന അറിയിപ്പ് • OFFICIAL NOTICE",
+    "title": "പരീക്ഷാ ഫലപ്രഖ്യാപനം",
+    "subtitle": "വാർഷിക പൊതു പരീക്ഷാ ഫലം 2026",
+    "dateTime": "2026 മെയ് 15 വെള്ളി രാവിലെ 10:00 മണിക്ക്",
+    "message": "മദ്റസ വാർഷിക പൊതുപരീക്ഷാ ഫലം താഴെ കാണുന്ന വെബ്സൈറ്റ് വഴിയോ QR കോഡ് സ്കാൻ ചെയ്തോ പരിശോധിക്കാവുന്നതാണ്.",
+    "url": "https://kimonline.in",
+    "footer": "മാനേജ്മെന്റ് • അധ്യാപകർ • പി.ടി.എ",
+    "showQR": true,
+    "qrImg": ""
+  },
+  "schedule": {
+    "enabled": false,
+    "datetime": "",
+    "message": "⏳ പരീക്ഷാ ഫലം ഉടൻ പ്രസിദ്ധീകരിക്കും!"
+  },
+  "visibility": {
+    "result": true,
+    "toppers": true,
+    "poster": true,
+    "attendance": true
+  },
+  "autoSync": true,
+  "syncInterval": 60,
+  "madrasas": [
+    {
+      "code": "KIM 3490",
+      "name": "മദ്റസത്തുൽ ഇസ്‌ലാം",
+      "place": "പൂക്കാട്ടിരി",
+      "classes": [
+        "Class 5"
+      ],
+      "classSubjects": {
+        "Class 5": [
+          {
+            "key": "Sub1",
+            "name": "ഖുർആൻ",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub2",
+            "name": "ഫിഖ്ഹ്",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub3",
+            "name": "അഖീദ",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub4",
+            "name": "താരീഖ്",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub5",
+            "name": "ദുറൂസ്",
+            "max": 50,
+            "pass": 18
+          }
+        ]
+      }
+    },
+    {
+      "code": "KIM 4562",
+      "name": "ദാറുൽ ഉലൂം മദ്റസ",
+      "place": "വളാഞ്ചേരി",
+      "classes": [
+        "Class 5"
+      ],
+      "classSubjects": {
+        "Class 5": [
+          {
+            "key": "Sub1",
+            "name": "ഖുർആൻ",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub2",
+            "name": "ഫിഖ്ഹ്",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub3",
+            "name": "അഖീദ",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub4",
+            "name": "താരീഖ്",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub5",
+            "name": "ദുറൂസ്",
+            "max": 50,
+            "pass": 18
+          }
+        ]
+      }
+    },
+    {
+      "code": "KIM 9863",
+      "name": "നൂറുൽ ഹുദാ മദ്റസ",
+      "place": "എടയൂർ",
+      "classes": [
+        "Class 5"
+      ],
+      "classSubjects": {
+        "Class 5": [
+          {
+            "key": "Sub1",
+            "name": "ഖുർആൻ",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub2",
+            "name": "ഫിഖ്ഹ്",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub3",
+            "name": "അഖീദ",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub4",
+            "name": "താരീഖ്",
+            "max": 50,
+            "pass": 18
+          },
+          {
+            "key": "Sub5",
+            "name": "ദുറൂസ്",
+            "max": 50,
+            "pass": 18
+          }
+        ]
+      }
+    }
+  ]
+};
+const DEFAULT_STUDENTS = [
+  {
+    "MadrasaCode": "KIM 3490",
+    "Class": "Class 5",
+    "RegNo": "REG101",
+    "StudentName": "Muhammed Fasil",
+    "WorkingDays": 200,
+    "DaysAttended": 196,
+    "Sub1": 48,
+    "Sub2": 46,
+    "Sub3": 49,
+    "Sub4": 45,
+    "Sub5": 47,
+    "Sub6": "",
+    "Sub7": "",
+    "Sub8": "",
+    "Sub9": "",
+    "Sub10": ""
+  },
+  {
+    "MadrasaCode": "KIM 3490",
+    "Class": "Class 5",
+    "RegNo": "REG102",
+    "StudentName": "Fathima Raniya",
+    "WorkingDays": 200,
+    "DaysAttended": 198,
+    "Sub1": 49,
+    "Sub2": 48,
+    "Sub3": 47,
+    "Sub4": 46,
+    "Sub5": 48,
+    "Sub6": "",
+    "Sub7": "",
+    "Sub8": "",
+    "Sub9": "",
+    "Sub10": ""
+  },
+  {
+    "MadrasaCode": "KIM 3490",
+    "Class": "Class 5",
+    "RegNo": "REG103",
+    "StudentName": "Abdullah Sinan",
+    "WorkingDays": 200,
+    "DaysAttended": 190,
+    "Sub1": 44,
+    "Sub2": 42,
+    "Sub3": 45,
+    "Sub4": 40,
+    "Sub5": 43,
+    "Sub6": "",
+    "Sub7": "",
+    "Sub8": "",
+    "Sub9": "",
+    "Sub10": ""
+  },
+  {
+    "MadrasaCode": "KIM 4562",
+    "Class": "Class 5",
+    "RegNo": "REG201",
+    "StudentName": "Ayisha Hiba",
+    "WorkingDays": 200,
+    "DaysAttended": 195,
+    "Sub1": 47,
+    "Sub2": 48,
+    "Sub3": 46,
+    "Sub4": 49,
+    "Sub5": 45,
+    "Sub6": "",
+    "Sub7": "",
+    "Sub8": "",
+    "Sub9": "",
+    "Sub10": ""
+  },
+  {
+    "MadrasaCode": "KIM 4562",
+    "Class": "Class 5",
+    "RegNo": "REG202",
+    "StudentName": "Muhammed Adil",
+    "WorkingDays": 200,
+    "DaysAttended": 192,
+    "Sub1": 45,
+    "Sub2": 44,
+    "Sub3": 46,
+    "Sub4": 43,
+    "Sub5": 45,
+    "Sub6": "",
+    "Sub7": "",
+    "Sub8": "",
+    "Sub9": "",
+    "Sub10": ""
+  },
+  {
+    "MadrasaCode": "KIM 9863",
+    "Class": "Class 5",
+    "RegNo": "REG301",
+    "StudentName": "Khadeeja Nida",
+    "WorkingDays": 200,
+    "DaysAttended": 199,
+    "Sub1": 50,
+    "Sub2": 49,
+    "Sub3": 48,
+    "Sub4": 47,
+    "Sub5": 49,
+    "Sub6": "",
+    "Sub7": "",
+    "Sub8": "",
+    "Sub9": "",
+    "Sub10": ""
+  }
+];
+/*__KIM_STATE_END__*/
+
+/* ==========================================================================
+   RUNTIME STATE & PERSISTENCE
+   ========================================================================== */
+const STORE_KEY = 'kim_online_final_v1';
+const TAB_TITLES = {
+  result: '🔍 റിസൾട്ട് പരിശോധിക്കാം',
+  toppers: '🏆 ടോപ്പേഴ്‌സ് ലിസ്റ്റ്',
+  poster: '🖼️ ടോപ്പർ പോസ്റ്റർ',
+  attendance: '📅 ഹാജർ പട്ടിക'
+};
+
+let CLOUD_SYNC_URL = DEFAULT_SCRIPT_URL;
+let CFG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+let STUDENTS = JSON.parse(JSON.stringify(DEFAULT_STUDENTS));
+let activeMadrasa = CFG.madrasas[0].code;
+let activeTab = 'result';
+let isAdminAuth = false;
+let isAdminOpen = false;
+let currentResult = null;
+let wasSchedLocked = false;
+let pushDebounce = null;
+let pollIntervalId = null;
+let isPushing = false;
+const syncLogs = [];
+
+// Live Image Assets for Canvas rendering
+let logoImgObj = new Image();
+let calligImgObj = null;
+let customQrImgObj = null;
+let stuPhotoObj = null;
+
+function deepMergeConfig(src) {
+  const base = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  if (!src || typeof src !== 'object') return base;
+  const out = Object.assign({}, base, src);
+  out.ann = Object.assign({}, base.ann, src.ann || {});
+  out.schedule = Object.assign({}, base.schedule, src.schedule || {});
+  out.visibility = Object.assign({}, base.visibility, src.visibility || {});
+  if (!Array.isArray(out.madrasas) || !out.madrasas.length) out.madrasas = base.madrasas;
+  out.madrasas.forEach(m => {
+    m.code = String(m.code || 'KIM 0000').trim();
+    m.name = String(m.name || 'മദ്റസ').trim();
+    m.place = String(m.place || '').trim();
+    if (!Array.isArray(m.classes) || !m.classes.length) m.classes = ['Class 5'];
+    if (!m.classSubjects || typeof m.classSubjects !== 'object') m.classSubjects = {};
+    m.classes.forEach(c => {
+      if (!Array.isArray(m.classSubjects[c]) || !m.classSubjects[c].length) {
+        m.classSubjects[c] = DEFAULT_CLASS_SUBS();
+      } else {
+        m.classSubjects[c].forEach((sub, idx) => {
+          if (!sub.key) sub.key = 'Sub' + (idx + 1);
+          sub.max = Number(sub.max) || 50;
+          sub.pass = Number(sub.pass) || 18;
+        });
+      }
+    });
+  });
+  return out;
+}
+
+function normalizeStudents(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(r => r && (r.RegNo || r.StudentName)).map(r => {
+    const o = {
+      MadrasaCode: String(r.MadrasaCode || '').trim(),
+      Class: String(r.Class || 'Class 5').trim(),
+      RegNo: String(r.RegNo || '').trim(),
+      StudentName: String(r.StudentName || '').trim(),
+      WorkingDays: Number(r.WorkingDays) || 200,
+      DaysAttended: Number(r.DaysAttended) || 0
+    };
+    for (let k = 1; k <= 10; k++) {
+      const val = r['Sub' + k];
+      o['Sub' + k] = (val === '' || val === null || val === undefined) ? '' : Number(val);
+    }
+    return o;
+  });
+}
+
+function loadLocalState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      if (saved.config) CFG = deepMergeConfig(saved.config);
+      if (Array.isArray(saved.students)) STUDENTS = normalizeStudents(saved.students);
+      if (saved.scriptUrl) CLOUD_SYNC_URL = saved.scriptUrl;
+      if (saved.activeMadrasa && CFG.madrasas.some(m => m.code === saved.activeMadrasa)) {
+        activeMadrasa = saved.activeMadrasa;
+      }
+    }
+  } catch (e) {}
+  // If DEFAULT_SCRIPT_URL was baked into GitHub index.html, always ensure it's used when local is empty
+  if (DEFAULT_SCRIPT_URL && !CLOUD_SYNC_URL) CLOUD_SYNC_URL = DEFAULT_SCRIPT_URL;
+  if (!CFG.madrasas.some(m => m.code === activeMadrasa)) activeMadrasa = CFG.madrasas[0].code;
+}
+
+function saveLocalState() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      scriptUrl: CLOUD_SYNC_URL,
+      activeMadrasa,
+      config: CFG,
+      students: STUDENTS
+    }));
+  } catch (e) {}
+}
+
+function loadAssetImage(src, onReady) {
+  if (!src) { onReady(null); return; }
+  const img = new Image();
+  if (/^https?:\/\//i.test(src)) img.crossOrigin = 'anonymous';
+  img.onload = () => onReady(img);
+  img.onerror = () => {
+    if (img.crossOrigin) {
+      const fb = new Image();
+      fb.onload = () => onReady(fb);
+      fb.onerror = () => onReady(null);
+      fb.src = src;
+    } else onReady(null);
+  };
+  img.src = src;
+}
+
+function syncAssetImages() {
+  loadAssetImage(CFG.logo || DEFAULT_LOGO_URI, img => {
+    logoImgObj = img || logoImgObj;
+    drawTopperPoster();
+    if (isAdminOpen) drawAnnPoster();
+  });
+  loadAssetImage(CFG.calligImg || '', img => {
+    calligImgObj = img;
+    drawTopperPoster();
+  });
+  loadAssetImage(CFG.ann.qrImg || '', img => {
+    customQrImgObj = img;
+    if (isAdminOpen) drawAnnPoster();
+  });
+}
+
+/* ==========================================================================
+   HELPERS, CLOUD BADGE & LOGGING
+   ========================================================================== */
+const getM = code => CFG.madrasas.find(m => m.code === (code || activeMadrasa)) || CFG.madrasas[0];
+const getSubs = (m, cls) => (m.classSubjects && m.classSubjects[cls]) || m.classSubjects[m.classes[0]] || DEFAULT_CLASS_SUBS();
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const placeCode = m => (m.place ? `📍 ${m.place} • ${m.code}` : m.code);
+const timeStr = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.add('hidden'), 2800);
+}
+
+function setCloudBadge(text, color) {
+  const b = document.getElementById('cloudBadge');
+  if (!b) return;
+  b.textContent = text;
+  b.style.color = color || '#a8e69a';
+}
+
+function addSyncLog(msg) {
+  syncLogs.unshift(`[${timeStr()}] ${msg}`);
+  if (syncLogs.length > 15) syncLogs.pop();
+  const el = document.getElementById('syncLog');
+  if (el) el.textContent = syncLogs.join('\n');
+}
+
+function onAdminMutate() {
+  saveLocalState();
+  if (CLOUD_SYNC_URL) {
+    setCloudBadge('⏳ ക്ലൗഡിലേക്ക് അയക്കുന്നു...', '#fde047');
+    clearTimeout(pushDebounce);
+    pushDebounce = setTimeout(() => pushToSheet(true), 1200);
+  } else {
+    setCloudBadge(`💾 ലോക്കൽ സേവ് ആയി (${timeStr()})`, '#a8e69a');
+  }
+}
+
+/* ==========================================================================
+   GOOGLE SHEETS 2-WAY AUTO-SYNC (GET Pull + text/plain POST Push)
+   ========================================================================== */
+async function pullFromSheet(silent = false, forceNoCache = false) {
+  if (!CLOUD_SYNC_URL) {
+    if (!silent) toast('⚠️ ദയവായി Web App URL നൽകുക!');
+    return;
+  }
+  if (isPushing) return;
+  try {
+    const sep = CLOUD_SYNC_URL.includes('?') ? '&' : '?';
+    const url = forceNoCache ? `${CLOUD_SYNC_URL}${sep}nocache=1&t=${Date.now()}` : CLOUD_SYNC_URL;
+    if (!silent) addSyncLog('⬇️ ഗൂഗിൾ ഷീറ്റിൽ നിന്ന് ഡാറ്റ എടുക്കുന്നു...');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error((data && data.error) || 'Invalid response');
+
+    if (data.config && typeof data.config === 'object' && Object.keys(data.config).length > 0) {
+      CFG = deepMergeConfig(data.config);
+    }
+    if (Array.isArray(data.students) && (data.students.length > 0 || (data.config && Object.keys(data.config).length > 0))) {
+      STUDENTS = normalizeStudents(data.students);
+      // Ensure any class present in sheet students exists in its Madrasa config
+      STUDENTS.forEach(st => {
+        const m = CFG.madrasas.find(x => x.code === st.MadrasaCode);
+        if (m && st.Class && !m.classes.includes(st.Class)) {
+          m.classes.push(st.Class);
+          m.classSubjects[st.Class] = DEFAULT_CLASS_SUBS();
+        }
+      });
+    }
+    if (!CFG.madrasas.some(m => m.code === activeMadrasa)) activeMadrasa = CFG.madrasas[0].code;
+    saveLocalState();
+    syncAssetImages();
+    refreshUI();
+    if (currentResult) {
+      // Refresh currently shown grade card silently if still present
+      const m = getM();
+      const updated = STUDENTS.find(s => s.MadrasaCode === m.code && s.RegNo.toUpperCase() === currentResult.RegNo.toUpperCase());
+      if (updated) renderGradeCard(updated, m);
+    }
+    setCloudBadge(`☁️ ക്ലൗഡ് സിങ്ക് ആയി (${timeStr()})`, '#a8e69a');
+    addSyncLog(`✅ Pull വിജയം (${STUDENTS.length} വിദ്യാർത്ഥികൾ, v${data.syncVersion || '1'})`);
+    if (!silent) toast(`⬇️ ഗൂഗിൾ ഷീറ്റിൽ നിന്ന് ${STUDENTS.length} വിദ്യാർത്ഥികളുടെ ഡാറ്റ സിങ്ക് ചെയ്തു!`);
+  } catch (err) {
+    addSyncLog(`❌ Pull പിശക്: ${err.message}`);
+    if (!silent) toast('⚠️ ഗൂഗിൾ ഷീറ്റ് കണക്റ്റ് ചെയ്യാനായില്ല. URL പരിശോധിക്കുക.');
+  }
+}
+
+async function pushToSheet(silent = false) {
+  if (!CLOUD_SYNC_URL) {
+    if (!silent) toast('⚠️ ദയവായി Web App URL നൽകുക!');
+    return;
+  }
+  isPushing = true;
+  setCloudBadge('⏳ ക്ലൗഡിലേക്ക് സേവ് ചെയ്യുന്നു...', '#fde047');
+  try {
+    const payload = JSON.stringify({ config: CFG, students: STUDENTS });
+    // Use text/plain to avoid CORS preflight with Google Apps Script Web Apps
+    const res = await fetch(CLOUD_SYNC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload
+    });
+    let ok = res.ok;
+    let errMsg = '';
+    try {
+      const json = await res.json();
+      if (json && json.ok === false) { ok = false; errMsg = json.error || 'Push failed'; }
+    } catch (e) {}
+    if (!ok) throw new Error(errMsg || 'HTTP ' + res.status);
+
+    setCloudBadge(`☁️ ക്ലൗഡ് സിങ്ക് ആയി (${timeStr()})`, '#a8e69a');
+    addSyncLog(`⬆️ Push വിജയം (${STUDENTS.length} വിദ്യാർത്ഥികൾ + Config)`);
+    if (!silent) toast('⬆️ മാറ്റങ്ങളെല്ലാം ഗൂഗിൾ ഷീറ്റിൽ സേവ് ചെയ്തു!');
+  } catch (err) {
+    setCloudBadge('⚠️ ക്ലൗഡ് സിങ്ക് പിശക് (ലോക്കൽ സേവ് ഉണ്ട്)', '#fca5a5');
+    addSyncLog(`❌ Push പിശക്: ${err.message}`);
+    if (!silent) toast('⚠️ ക്ലൗഡ് സേവ് പിശക്: ' + err.message);
+  } finally {
+    isPushing = false;
+  }
+}
+
+function setupAutoSync() {
+  clearInterval(pollIntervalId);
+  if (CFG.autoSync && CLOUD_SYNC_URL) {
+    const ms = Math.max(20, Number(CFG.syncInterval) || 60) * 1000;
+    pollIntervalId = setInterval(() => {
+      if (!isAdminOpen && !isPushing) pullFromSheet(true, false);
+    }, ms);
+  }
+}
+
+/* ==========================================================================
+   IMAGE COMPRESSION (<18 KB Base64) FOR GOOGLE SHEETS 50K CELL LIMIT
+   ========================================================================== */
+function compressImageFile(file, maxDim, maxChars, callback) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      const ratio = Math.min(1, maxDim / Math.max(w, h));
+      w = Math.max(32, Math.round(w * ratio));
+      h = Math.max(32, Math.round(h * ratio));
+      const cv = document.createElement('canvas');
+      const ctx = cv.getContext('2d');
+      let dataUrl = '';
+      let q = 0.84;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        cv.width = w; cv.height = h;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        // Prefer WebP (supports transparency + tiny size); fallback to JPEG if unsupported
+        dataUrl = cv.toDataURL('image/webp', q);
+        if (!dataUrl.startsWith('data:image/webp')) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          dataUrl = cv.toDataURL('image/jpeg', q);
+        }
+        if (dataUrl.length <= maxChars) break;
+        q = Math.max(0.35, q - 0.12);
+        w = Math.max(48, Math.round(w * 0.8));
+        h = Math.max(48, Math.round(h * 0.8));
+      }
+      callback(dataUrl);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function uploadCompressedImg(e, target, maxDim) {
+  const f = e.target.files[0]; if (!f) return;
+  compressImageFile(f, maxDim, 17500, dataUrl => {
+    const kb = (dataUrl.length / 1024).toFixed(1);
+    if (target === 'logo') {
+      CFG.logo = dataUrl;
+      document.getElementById('aLogoUrl').value = '';
+    } else if (target === 'callig') {
+      CFG.calligImg = dataUrl;
+      document.getElementById('aCalUrl').value = '';
+    } else if (target === 'qr') {
+      CFG.ann.qrImg = dataUrl;
+    }
+    syncAssetImages();
+    onAdminMutate();
+    refreshUI();
+    toast(`✅ ഇമേജ് കംപ്രസ്സ് ചെയ്ത് ചേർത്തു (${kb} KB)`);
+  });
+}
+
+function setLogoUrl(v) { CFG.logo = v.trim(); syncAssetImages(); onAdminMutate(); refreshUI(); }
+function resetLogo() { CFG.logo = ''; document.getElementById('aLogoUrl').value = ''; syncAssetImages(); onAdminMutate(); refreshUI(); toast('🔄 ഡിഫോൾട്ട് KIM ലോഗോ പുനഃസ്ഥാപിച്ചു'); }
+function setCalligUrl(v) { CFG.calligImg = v.trim(); syncAssetImages(); onAdminMutate(); drawTopperPoster(); }
+function clearCallig() { CFG.calligImg = ''; calligImgObj = null; document.getElementById('aCalUrl').value = ''; onAdminMutate(); drawTopperPoster(); toast('🗑️ കാലിഗ്രഫി ഇമേജ് നീക്കം ചെയ്തു'); }
+function clearCustomQr() { CFG.ann.qrImg = ''; customQrImgObj = null; onAdminMutate(); drawAnnPoster(); toast('🔄 ഓട്ടോ QR കോഡിലേക്ക് മാറ്റി'); }
+
+function uploadStuPhoto(e) {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    const img = new Image();
+    img.onload = () => { stuPhotoObj = img; drawTopperPoster(); };
+    img.src = ev.target.result;
+  };
+  r.readAsDataURL(f);
+}
+function clearStuPhoto() { stuPhotoObj = null; document.getElementById('stuPhotoInp').value = ''; drawTopperPoster(); }
+
+/* ==========================================================================
+   SCHEDULE LOCK & SECTION VISIBILITY GATES
+   ========================================================================== */
+function isSchedLocked() {
+  if (!CFG.schedule.enabled || !CFG.schedule.datetime) return false;
+  const t = new Date(CFG.schedule.datetime).getTime();
+  return !isNaN(t) && Date.now() < t;
+}
+
+function tickCountdown() {
+  if (!isSchedLocked()) return;
+  const diff = Math.max(0, new Date(CFG.schedule.datetime).getTime() - Date.now());
+  document.getElementById('cdD').textContent = String(Math.floor(diff / 86400000)).padStart(2, '0');
+  document.getElementById('cdH').textContent = String(Math.floor((diff % 86400000) / 3600000)).padStart(2, '0');
+  document.getElementById('cdM').textContent = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+  document.getElementById('cdS').textContent = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+}
+
+function applyGates() {
+  const pubs = ['result', 'toppers', 'poster', 'attendance'];
+  const gCd = document.getElementById('gateCountdown');
+  const gOff = document.getElementById('gateDisabled');
+  pubs.forEach(t => document.getElementById('tab-' + t).classList.add('hidden'));
+
+  // Schedule lock overrides ALL 4 public tabs with live countdown
+  if (isSchedLocked()) {
+    gOff.classList.add('hidden');
+    gCd.classList.remove('hidden');
+    const m = getM();
+    document.getElementById('cdLogo').innerHTML = `<img src="${CFG.logo || DEFAULT_LOGO_URI}" alt="KIM">`;
+    document.getElementById('cdName').textContent = m.name;
+    document.getElementById('cdMeta').textContent = placeCode(m);
+    document.getElementById('cdExam').textContent = CFG.examTitle;
+    document.getElementById('cdMsg').textContent = CFG.schedule.message || '⏳ പരീക്ഷാ ഫലം ഉടൻ പ്രസിദ്ധീകരിക്കും!';
+    document.getElementById('cdTarget').textContent = '🗓️ ' + new Date(CFG.schedule.datetime).toLocaleString('ml-IN');
+    tickCountdown();
+    return;
+  }
+
+  gCd.classList.add('hidden');
+  if (!CFG.visibility[activeTab]) {
+    gOff.classList.remove('hidden');
+    document.getElementById('offGateDesc').textContent = `${TAB_TITLES[activeTab]} നിലവിൽ അഡ്മിൻ ഓഫ് ചെയ്തിരിക്കുകയാണ്.`;
+    return;
+  }
+
+  gOff.classList.add('hidden');
+  document.getElementById('tab-' + activeTab).classList.remove('hidden');
+  if (activeTab === 'toppers') renderTop3('toppers');
+  else if (activeTab === 'attendance') renderTop3('attendance');
+  else if (activeTab === 'poster') { fillPosterStudents(); drawTopperPoster(); }
+}
+
+setInterval(() => {
+  const lk = isSchedLocked();
+  if (lk) {
+    tickCountdown();
+    if (isAdminOpen) updSchedInfo();
+  } else if (wasSchedLocked) {
+    toast('🎉 പരീക്ഷാ ഫലവും ലിസ്റ്റുകളും ഇപ്പോൾ ലഭ്യമാണ്!');
+    applyGates();
+    if (isAdminOpen) updSchedInfo();
+  }
+  wasSchedLocked = lk;
+}, 1000);
+
+/* ==========================================================================
+   HEADER, NAVIGATION & UI REFRESH
+   ========================================================================== */
+function selectMadrasa(code) {
+  activeMadrasa = code;
+  saveLocalState();
+  clearResult();
+  document.getElementById('regInput').value = '';
+  refreshUI();
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  ['result', 'toppers', 'poster', 'attendance'].forEach(t => {
+    document.getElementById('nav-' + t).classList.toggle('active', t === tab);
+  });
+  applyGates();
+}
+
+function clearResult() {
+  currentResult = null;
+  document.getElementById('resultBox').innerHTML = '';
+}
+
+function refreshUI() {
+  const m = getM();
+  const logoSrc = CFG.logo || DEFAULT_LOGO_URI;
+  document.getElementById('hdrPortal').textContent = CFG.portalName || 'KIM Online';
+  document.getElementById('hdrLogo').innerHTML = `<img src="${logoSrc}" alt="KIM">`;
+  document.getElementById('hdrMadName').textContent = m.name;
+  document.getElementById('hdrMadMeta').textContent = placeCode(m);
+
+  // Result Banner (Center-Aligned)
+  document.getElementById('bnrLogo').innerHTML = `<img src="${logoSrc}" alt="KIM">`;
+  document.getElementById('bnrName').textContent = m.name;
+  document.getElementById('bnrMeta').textContent = placeCode(m);
+  document.getElementById('bnrExam').textContent = CFG.examTitle;
+
+  document.getElementById('topBadge').textContent = `${m.name} (${placeCode(m)})`;
+  document.getElementById('attBadge').textContent = `${m.name} (${placeCode(m)})`;
+  document.getElementById('webFooter').textContent = CFG.webFooter;
+
+  // Horizontal Madrasa Selector Buttons
+  document.getElementById('madrasaBar').innerHTML = CFG.madrasas.map(x =>
+    `<button type="button" class="pill ${x.code === m.code ? 'active' : ''}" onclick="selectMadrasa('${esc(x.code)}')">${esc(x.code)} — ${esc(x.name)}${x.place ? ' (' + esc(x.place) + ')' : ''}</button>`
+  ).join('');
+
+  // Populate Class Dropdowns for Active Madrasa
+  const sCls = document.getElementById('searchCls'), prevS = sCls.value;
+  sCls.innerHTML = `<option value="ALL">ക്ലാസ്സ് തിരഞ്ഞെടുക്കുക (എല്ലാം)</option>` +
+    m.classes.map(c => `<option value="${esc(c)}" ${c === prevS ? 'selected' : ''}>${esc(c)}</option>`).join('');
+
+  ['topClsFilter', 'attClsFilter'].forEach(id => {
+    const el = document.getElementById(id), prev = el.value || 'ALL';
+    el.innerHTML = `<option value="ALL">എല്ലാ ക്ലാസ്സുകളും</option>` +
+      m.classes.map(c => `<option value="${esc(c)}" ${c === prev ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  });
+
+  const pCls = document.getElementById('pClsSel'), prevP = pCls.value;
+  pCls.innerHTML = m.classes.map(c => `<option value="${esc(c)}" ${c === prevP ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  fillPosterStudents();
+
+  applyGates();
+  if (isAdminOpen) renderAdmin();
+}
+
+/* ==========================================================================
+   EVALUATION, RANKING & GRADE CARD DISPLAY
+   ========================================================================== */
+function evalStu(st, m) {
+  const subs = getSubs(m, st.Class);
+  let tot = 0, max = 0, pass = true;
+  const subResults = subs.map(sub => {
+    const raw = st[sub.key];
+    const mk = (raw === '' || raw === null || raw === undefined) ? 0 : Number(raw);
+    const sMax = Number(sub.max) || 50;
+    const sPass = Number(sub.pass) || 18;
+    const ok = mk >= sPass;
+    if (!ok) pass = false;
+    tot += mk; max += sMax;
+    return { name: sub.name, max: sMax, pass: sPass, obtained: mk, ok };
+  });
+  const pct = max ? ((tot / max) * 100).toFixed(1) : '0.0';
+  const grade = !pass ? 'F' : pct >= 90 ? 'A+' : pct >= 80 ? 'A' : pct >= 70 ? 'B+' : pct >= 60 ? 'B' : 'C';
+  const work = Math.max(1, Number(st.WorkingDays) || 200);
+  const att = Number(st.DaysAttended) || 0;
+  const attPct = Math.round((att / work) * 100);
+  return {
+    ...st, tot, max, pct, grade, pass, subResults,
+    work, att, attPct, attStr: `${att} / ${work} (${attPct}%)`
+  };
+}
+
+function getRank(st, m) {
+  const ev = evalStu(st, m);
+  if (!ev.pass) return null;
+  const peers = STUDENTS
+    .filter(x => x.MadrasaCode === m.code && x.Class === st.Class)
+    .map(x => evalStu(x, m))
+    .filter(x => x.pass)
+    .sort((a, b) => b.tot - a.tot);
+  const uniq = [...new Set(peers.map(x => x.tot))];
+  const r = uniq.indexOf(ev.tot) + 1;
+  return r > 0 ? r : null;
+}
+
+function searchResult() {
+  if (isSchedLocked() || !CFG.visibility.result) return applyGates();
+  const m = getM();
+  const cls = document.getElementById('searchCls').value;
+  const q = document.getElementById('regInput').value.trim().toUpperCase();
+  if (!q) return toast('⚠️ ദയവായി രജിസ്റ്റർ നമ്പർ നൽകുക!');
+
+  const pool = STUDENTS.filter(s => s.MadrasaCode === m.code && (cls === 'ALL' || s.Class === cls));
+  const stu = pool.find(s =>
+    s.RegNo.toUpperCase() === q ||
+    s.RegNo.toUpperCase() === ('REG' + q) ||
+    s.StudentName.toUpperCase().includes(q)
+  );
+  if (!stu) {
+    currentResult = null;
+    document.getElementById('resultBox').innerHTML = `
+      <div class="card" style="text-align:center;border-color:#fca5a5;background:#fef2f2;color:#991b1b">
+        <strong>❌ "${esc(q)}" എന്ന രജിസ്റ്റർ നമ്പറിൽ ഈ മദ്റസയിൽ ഫലം കണ്ടെത്താനായില്ല!</strong>
+      </div>`;
+    return;
+  }
+  renderGradeCard(stu, m);
+}
+
+function renderGradeCard(stu, m) {
+  const s = { ...evalStu(stu, m), rank: getRank(stu, m) };
+  currentResult = s;
+  const rows = s.subResults.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${esc(r.name)}</td>
+      <td style="text-align:center">${r.max}</td>
+      <td style="text-align:center;font-weight:900">${r.obtained}</td>
+      <td style="text-align:center;font-weight:900;color:${r.ok ? '#007965' : '#dc2626'}">${r.ok ? 'Pass' : 'Fail'}</td>
+    </tr>`).join('');
+
+  document.getElementById('resultBox').innerHTML = `
+    <div class="card" style="border:2.5px solid #72b863">
+      <!-- 1. Center-Aligned Madrasa Details -->
+      <div style="background:linear-gradient(135deg,#004d40,#007965);color:#fff;padding:18px 14px;border-radius:16px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px">
+        <div class="logo-box" style="width:68px;height:68px;border-radius:16px"><img src="${CFG.logo || DEFAULT_LOGO_URI}" alt="KIM"></div>
+        <h3 style="font-size:21px;font-weight:900;margin-top:4px">${esc(m.name)}</h3>
+        <div style="font-size:13px;color:#d6f5e3;font-weight:800">${esc(placeCode(m))}</div>
+        <div style="font-size:12.5px;color:#a8e69a;font-weight:800">${esc(CFG.examTitle)}</div>
+      </div>
+
+      <!-- 2. Center-Aligned Student Details (NO Rank, NO Attendance here) -->
+      <div style="background:#f0f7f4;padding:14px 12px;border-radius:14px;margin-top:12px;border:1.5px solid #c6e6d8;text-align:center">
+        <div style="font-size:20px;font-weight:900;color:#004d40">${esc(s.StudentName)}</div>
+        <div style="font-size:13.5px;color:#007965;font-weight:900;margin-top:4px">രജിസ്റ്റർ നമ്പർ: ${esc(s.RegNo)} &nbsp;•&nbsp; ക്ലാസ്സ്: ${esc(s.Class)}</div>
+      </div>
+
+      <!-- 3. PASSED / FAILED Status Badge directly BELOW Student Details -->
+      <div style="text-align:center">
+        <div class="status-pill ${s.pass ? 'st-pass' : 'st-fail'}">${s.pass ? '✅ PASSED (വിജയിച്ചു)' : '❌ FAILED (പരാജയപ്പെട്ടു)'}</div>
+      </div>
+
+      <!-- 4. Subject Marks Table -->
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>#</th><th>വിഷയം</th><th style="text-align:center">പരമാവധി</th><th style="text-align:center">ലഭിച്ചത്</th><th style="text-align:center">ഫലം</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+
+      <!-- 5. Summary Grid BELOW Marks: Total, %, Grade, Rank, and right AFTER Rank: Attendance (NO Footer) -->
+      <div class="stat-grid">
+        <div class="stat-box"><div class="sl">ആകെ മാർക്ക്</div><div class="sv">${s.tot} / ${s.max}</div></div>
+        <div class="stat-box"><div class="sl">ശതമാനം</div><div class="sv">${s.pct}%</div></div>
+        <div class="stat-box"><div class="sl">ഗ്രേഡ്</div><div class="sv">${s.grade}</div></div>
+        <div class="stat-box rk"><div class="sl">🏆 റാങ്ക്</div><div class="sv">${s.rank ? '#' + s.rank : '—'}</div></div>
+        <div class="stat-box at"><div class="sl">📅 ഹാജർ</div><div class="sv">${s.attStr}</div></div>
+      </div>
+
+      <!-- Direct Download Buttons (NO window.print, NO footer) -->
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap">
+        <button type="button" class="btn btn-leaf" onclick="downloadResult('png')">🖼️ Image Download (PNG)</button>
+        <button type="button" class="btn btn-dark" onclick="downloadResult('pdf')">📥 PDF Download</button>
+      </div>
+    </div>`;
+}
+
+/* ==========================================================================
+   PURE-JS CANVAS-TO-PDF 1.4 GENERATOR (Zero External Dependencies)
+   ========================================================================== */
+function canvasToPdf(cv, filename) {
+  const bin = atob(cv.toDataURL('image/jpeg', 0.93).split(',')[1]);
+  const img = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) img[i] = bin.charCodeAt(i);
+  const w = cv.width, h = cv.height, pw = 595.28, ph = Number(((h * pw) / w).toFixed(2));
+  const enc = s => Uint8Array.from(s, c => c.charCodeAt(0) & 255);
+  const parts = [], offs = [0]; let pos = 0;
+  const addS = s => { const b = enc(s); parts.push(b); pos += b.length; };
+  const addB = b => { parts.push(b); pos += b.length; };
+
+  addS('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  offs.push(pos); addS('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  offs.push(pos); addS('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
+  offs.push(pos); addS(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`);
+  offs.push(pos); addS(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.length} >>\nstream\n`);
+  addB(img); addS('\nendstream\nendobj\n');
+  const cs = `q\n${pw} 0 0 ${ph} 0 0 cm\n/Im0 Do\nQ\n`;
+  offs.push(pos); addS(`5 0 obj\n<< /Length ${cs.length} >>\nstream\n${cs}endstream\nendobj\n`);
+  const xref = pos;
+  addS(`xref\n0 ${offs.length}\n0000000000 65535 f \n`);
+  for (let i = 1; i < offs.length; i++) addS(String(offs[i]).padStart(10, '0') + ' 00000 n \n');
+  addS(`trailer\n<< /Size ${offs.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+
+  const out = new Uint8Array(pos); let p = 0;
+  parts.forEach(b => { out.set(b, p); p += b.length; });
+  const url = URL.createObjectURL(new Blob([out], { type: 'application/pdf' }));
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast('✅ PDF ഫയൽ ഡൗൺലോഡ് ചെയ്തു!');
+}
+
+function downloadCanvasPng(canvasId, filename) {
+  try {
+    const a = document.createElement('a');
+    a.download = filename;
+    a.href = document.getElementById(canvasId).toDataURL('image/png');
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    toast('✅ HD ഇമേജ് (PNG) ഡൗൺലോഡ് ചെയ്തു!');
+  } catch (e) {
+    toast('⚠️ എക്സ്റ്റേണൽ ഇമേജ് CORS കാരണം ഡൗൺലോഡ് തടസ്സപ്പെട്ടു. ഫയൽ അപ്‌ലോഡ് ഉപയോഗിക്കുക.');
+  }
+}
+
+/* ==========================================================================
+   CANVAS DRAWING HELPERS & HD GRADE CARD ENGINE (NO Footer)
+   ========================================================================== */
+function rRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function drawPill(ctx, x, y, w, h, r, bg, bd, txt, col, font) {
+  ctx.save(); rRect(ctx, x, y, w, h, r); ctx.fillStyle = bg; ctx.fill();
+  if (bd) { ctx.lineWidth = 2.5; ctx.strokeStyle = bd; ctx.stroke(); }
+  ctx.fillStyle = col; ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(txt, x + w / 2, y + h / 2); ctx.restore();
+}
+function drawCoverImage(ctx, img, x, y, w, h) {
+  const ir = img.width / img.height, br = w / h;
+  let sx = 0, sy = 0, sw = img.width, sh = img.height;
+  if (ir > br) { sw = img.height * br; sx = (img.width - sw) / 2; }
+  else { sh = img.width / br; sy = (img.height - sh) / 2; }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+function buildGradeCardCanvas() {
+  const m = getM(), s = currentResult; if (!s) return null;
+  const cv = document.createElement('canvas');
+  cv.width = 1080; cv.height = 700 + s.subResults.length * 56;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.strokeStyle = '#007965'; ctx.lineWidth = 6; rRect(ctx, 18, 18, 1044, cv.height - 36, 28); ctx.stroke();
+
+  // 1. Center-Aligned Madrasa Header
+  const g = ctx.createLinearGradient(0, 28, 1080, 290); g.addColorStop(0, '#004d40'); g.addColorStop(1, '#007965');
+  rRect(ctx, 32, 32, 1016, 250, 22); ctx.fillStyle = g; ctx.fill();
+  rRect(ctx, 488, 44, 104, 104, 22); ctx.fillStyle = '#ffffff'; ctx.fill();
+  try { if (logoImgObj) ctx.drawImage(logoImgObj, 494, 50, 92, 92); } catch (e) {}
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff'; ctx.font = '900 34px "Noto Sans Malayalam",sans-serif'; ctx.fillText(m.name, 540, 182);
+  ctx.fillStyle = '#d6f5e3'; ctx.font = '800 22px "Noto Sans Malayalam",sans-serif'; ctx.fillText(placeCode(m), 540, 220);
+  ctx.fillStyle = '#a8e69a'; ctx.font = '700 21px "Noto Sans Malayalam",sans-serif'; ctx.fillText(CFG.examTitle, 540, 254);
+
+  // 2. Center-Aligned Student Details (No Rank, No Attendance)
+  rRect(ctx, 40, 298, 1000, 102, 18); ctx.fillStyle = '#f0f7f4'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = '#c6e6d8'; ctx.stroke();
+  ctx.fillStyle = '#004d40'; ctx.font = '900 33px "Noto Sans Malayalam",sans-serif'; ctx.fillText(s.StudentName, 540, 334);
+  ctx.fillStyle = '#007965'; ctx.font = '800 23px "Noto Sans Malayalam",sans-serif'; ctx.fillText(`രജിസ്റ്റർ നമ്പർ: ${s.RegNo}   •   ക്ലാസ്സ്: ${s.Class}`, 540, 374);
+
+  // 3. PASSED / FAILED Status Badge directly BELOW Student Details
+  drawPill(ctx, 310, 416, 460, 54, 27, s.pass ? '#dcfce7' : '#fee2e2', s.pass ? '#22c55e' : '#ef4444',
+    s.pass ? '✅ PASSED (വിജയിച്ചു)' : '❌ FAILED (പരാജയപ്പെട്ടു)', s.pass ? '#166534' : '#991b1b', '900 24px "Noto Sans Malayalam",sans-serif');
+
+  // 4. Subject Marks Table
+  let y = 488;
+  ctx.fillStyle = '#007965'; rRect(ctx, 40, y, 1000, 52, 12); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.font = '900 21px "Noto Sans Malayalam",sans-serif';
+  const cx = [70, 134, 650, 800, 945];
+  ['#', 'വിഷയം', 'പരമാവധി', 'ലഭിച്ചത്', 'ഫലം'].forEach((h, i) => {
+    ctx.textAlign = i > 1 ? 'center' : 'left'; ctx.fillText(h, cx[i], y + 26);
+  });
+  y += 52;
+
+  s.subResults.forEach((r, i) => {
+    ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#f0f7f4'; ctx.fillRect(40, y, 1000, 56);
+    ctx.fillStyle = '#06362d'; ctx.font = '700 22px "Noto Sans Malayalam",sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(String(i + 1), cx[0], y + 28);
+    ctx.fillText(r.name, cx[1], y + 28);
+    ctx.textAlign = 'center';
+    ctx.fillText(String(r.max), cx[2], y + 28);
+    ctx.font = '900 23px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText(String(r.obtained), cx[3], y + 28);
+    ctx.fillStyle = r.ok ? '#007965' : '#dc2626';
+    ctx.font = '800 21px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText(r.ok ? 'Pass' : 'Fail', cx[4], y + 28);
+    y += 56;
+  });
+
+  // 5. Summary Boxes BELOW Marks: Total, %, Grade, Rank, Attendance (NO Footer)
+  const sy = y + 20, gap = 12, bw = (1000 - gap * 4) / 5;
+  const stats = [
+    { l: 'ആകെ മാർക്ക്', v: `${s.tot} / ${s.max}`, bg: '#f0f7f4', bd: '#c6e6d8', c: '#004d40' },
+    { l: 'ശതമാനം', v: `${s.pct}%`, bg: '#f0f7f4', bd: '#c6e6d8', c: '#004d40' },
+    { l: 'ഗ്രേഡ്', v: s.grade, bg: '#f0f7f4', bd: '#c6e6d8', c: '#004d40' },
+    { l: '🏆 റാങ്ക്', v: s.rank ? `#${s.rank}` : '—', bg: '#fde047', bd: '#ca8a04', c: '#422006' },
+    { l: '📅 ഹാജർ', v: s.attStr, bg: '#d1fae5', bd: '#34d399', c: '#065f46' }
+  ];
+  stats.forEach((st, i) => {
+    const bx = 40 + i * (bw + gap);
+    rRect(ctx, bx, sy, bw, 98, 16); ctx.fillStyle = st.bg; ctx.fill();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = st.bd; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = '#007965'; ctx.font = '800 18px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText(st.l, bx + bw / 2, sy + 30);
+    ctx.fillStyle = st.c; ctx.font = i === 4 ? '900 18.5px "Noto Sans Malayalam",sans-serif' : '900 25px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText(st.v, bx + bw / 2, sy + 68);
+  });
+  return cv;
+}
+
+function downloadResult(fmt) {
+  const cv = buildGradeCardCanvas(); if (!cv) return;
+  if (fmt === 'png') {
+    const a = document.createElement('a'); a.download = `KIM_Result_${currentResult.RegNo}.png`;
+    a.href = cv.toDataURL('image/png'); document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    toast('✅ റിസൾട്ട് കാർഡ് ഇമേജ് (PNG) ഡൗൺലോഡ് ചെയ്തു!');
+  } else {
+    canvasToPdf(cv, `KIM_Result_${currentResult.RegNo}.pdf`);
+  }
+}
+
+/* ==========================================================================
+   TAB 2 & TAB 4: TOPPERS LIST & ATTENDANCE LIST (IDENTICAL CARDS + PDF)
+   ========================================================================== */
+function getFilteredClasses(type) {
+  const m = getM();
+  const sel = document.getElementById(type === 'toppers' ? 'topClsFilter' : 'attClsFilter').value;
+  return (sel && sel !== 'ALL') ? [sel] : m.classes;
+}
+
+function renderTop3(type) {
+  const m = getM(), medals = ['🥇 1st', '🥈 2nd', '🥉 3rd'];
+  const classes = getFilteredClasses(type);
+  document.getElementById(type === 'toppers' ? 'toppersGrid' : 'attGrid').innerHTML = classes.map(cls => {
+    const raw = STUDENTS.filter(s => s.MadrasaCode === m.code && s.Class === cls).map(s => evalStu(s, m));
+    const list = type === 'toppers'
+      ? raw.filter(s => s.pass).sort((a, b) => b.tot - a.tot).slice(0, 3)
+      : raw.sort((a, b) => (b.att / b.work) - (a.att / a.work)).slice(0, 3);
+    const rows = list.length ? list.map((s, i) => `
+      <div class="rank-row">
+        <div>
+          <div style="font-size:12px;color:#007965;font-weight:900">${medals[i]} • ${esc(s.RegNo)}</div>
+          <div style="font-size:15px;font-weight:900">${esc(s.StudentName)}</div>
+        </div>
+        <div style="text-align:right;font-weight:900;color:#004d40">${type === 'toppers' ? `${s.tot}/${s.max} (${s.pct}%)` : s.attStr}</div>
+      </div>`).join('') : `<div style="padding:14px;text-align:center;color:#64748b;font-size:13px">വിവരങ്ങൾ ലഭ്യമല്ല</div>`;
+    return `<div class="card"><div style="background:#007965;color:#fff;padding:10px 14px;border-radius:11px;font-weight:900">${esc(cls)} — ${type === 'toppers' ? 'ടോപ്പേഴ്‌സ്' : 'ഹാജർ പട്ടിക'}</div>${rows}</div>`;
+  }).join('');
+}
+
+function downloadListPdf(type) {
+  const m = getM(), classes = getFilteredClasses(type);
+  const cv = document.createElement('canvas');
+  cv.width = 1080; cv.height = 220 + classes.length * 265;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#004d40'; ctx.fillRect(0, 0, 1080, 154);
+  rRect(ctx, 40, 26, 100, 100, 20); ctx.fillStyle = '#ffffff'; ctx.fill();
+  try { if (logoImgObj) ctx.drawImage(logoImgObj, 46, 32, 88, 88); } catch (e) {}
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#a8e69a'; ctx.font = '800 22px "Noto Sans Malayalam",sans-serif';
+  ctx.fillText(`${placeCode(m)}  •  ${CFG.examTitle}`, 160, 52);
+  ctx.fillStyle = '#ffffff'; ctx.font = '900 32px "Noto Sans Malayalam",sans-serif';
+  ctx.fillText(`${m.name} — ${type === 'toppers' ? 'ടോപ്പേഴ്‌സ് ലിസ്റ്റ്' : 'ഹാജർ പട്ടിക'}`, 160, 104);
+
+  let y = 186;
+  classes.forEach(cls => {
+    ctx.fillStyle = '#007965'; rRect(ctx, 40, y, 1000, 48, 12); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.font = '900 24px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText(cls, 65, y + 24); y += 58;
+    const raw = STUDENTS.filter(s => s.MadrasaCode === m.code && s.Class === cls).map(s => evalStu(s, m));
+    const list = type === 'toppers'
+      ? raw.filter(s => s.pass).sort((a, b) => b.tot - a.tot).slice(0, 3)
+      : raw.sort((a, b) => (b.att / b.work) - (a.att / a.work)).slice(0, 3);
+    if (!list.length) {
+      ctx.fillStyle = '#64748b'; ctx.font = '700 20px "Noto Sans Malayalam",sans-serif';
+      ctx.fillText('വിവരങ്ങൾ ലഭ്യമല്ല', 65, y + 24); y += 56;
+    } else {
+      list.forEach((s, i) => {
+        ctx.fillStyle = '#f0f7f4'; rRect(ctx, 40, y, 1000, 52, 10); ctx.fill();
+        ctx.fillStyle = '#06362d'; ctx.font = '800 21px "Noto Sans Malayalam",sans-serif';
+        ctx.fillText(`#${i + 1}  ${s.StudentName} (${s.RegNo})  —  ${type === 'toppers' ? `${s.tot}/${s.max} (${s.pct}%)` : s.attStr}`, 65, y + 26);
+        y += 58;
+      });
+    }
+    y += 18;
+  });
+  canvasToPdf(cv, `KIM_${type}_${m.code.replace(/\s+/g, '_')}.pdf`);
+}
+
+/* ==========================================================================
+   TAB 3: TOPPER POSTER (1080×1440 HD PNG)
+   ========================================================================== */
+function fillPosterStudents() {
+  const m = getM(), cls = document.getElementById('pClsSel').value || m.classes[0];
+  const list = STUDENTS.filter(s => s.MadrasaCode === m.code && s.Class === cls)
+    .map(s => evalStu(s, m)).sort((a, b) => b.tot - a.tot);
+  const sel = document.getElementById('pStuSel'), prev = sel.value;
+  sel.innerHTML = list.length
+    ? list.map((s, i) => `<option value="${esc(s.RegNo)}" ${s.RegNo === prev ? 'selected' : ''}>#${i + 1} — ${esc(s.StudentName)} (${esc(s.RegNo)})</option>`).join('')
+    : `<option value="">വിദ്യാർത്ഥികളില്ല</option>`;
+}
+
+function drawTopperPoster() {
+  const cv = document.getElementById('posterCanvas'); if (!cv) return;
+  const ctx = cv.getContext('2d'), m = getM(), reg = document.getElementById('pStuSel').value;
+  const raw = STUDENTS.find(s => s.MadrasaCode === m.code && s.RegNo === reg) || STUDENTS.find(s => s.MadrasaCode === m.code);
+  const th = document.getElementById('pThemeSel').value;
+
+  const g = ctx.createLinearGradient(0, 0, 1080, 1440);
+  if (th === 'kim') { g.addColorStop(0, '#004d40'); g.addColorStop(0.55, '#007965'); g.addColorStop(1, '#002b24'); }
+  else if (th === 'emerald') { g.addColorStop(0, '#022c22'); g.addColorStop(0.6, '#065f46'); g.addColorStop(1, '#022c22'); }
+  else { g.addColorStop(0, '#064e3b'); g.addColorStop(0.55, '#14532d'); g.addColorStop(1, '#052e16'); }
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 1080, 1440);
+  ctx.strokeStyle = '#72b863'; ctx.lineWidth = 8; rRect(ctx, 26, 26, 1028, 1388, 42); ctx.stroke();
+
+  // Top Bar: Logo + Portal Name & Madrasa Code
+  rRect(ctx, 64, 52, 88, 88, 20); ctx.fillStyle = '#ffffff'; ctx.fill();
+  try { if (logoImgObj) ctx.drawImage(logoImgObj, 68, 56, 80, 80); } catch (e) {}
+  ctx.fillStyle = '#a8e69a'; ctx.font = '900 30px "Noto Sans Malayalam",sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(CFG.portalName || 'KIM Online', 168, 96);
+  drawPill(ctx, 825, 66, 190, 56, 28, '#72b863', '#ffffff', m.code, '#ffffff', '900 25px "Noto Sans Malayalam",sans-serif');
+
+  // Center-Aligned Madrasa Name, Place, Exam Title & Headline
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff'; ctx.font = '900 44px "Noto Sans Malayalam",sans-serif'; ctx.fillText(m.name, 540, 200);
+  ctx.fillStyle = '#d6f5e3'; ctx.font = '800 26px "Noto Sans Malayalam",sans-serif'; ctx.fillText(m.place ? `📍 ${m.place}` : '', 540, 246);
+  ctx.fillStyle = '#a8e69a'; ctx.font = '700 24px "Noto Sans Malayalam",sans-serif'; ctx.fillText(CFG.examTitle, 540, 288);
+  ctx.fillStyle = '#fde047'; ctx.font = '800 23px "Noto Sans Malayalam",sans-serif'; ctx.fillText(CFG.posterSubtext || '', 540, 326);
+
+  if (!raw) return;
+  const stu = evalStu(raw, m), rank = getRank(raw, m) || 1;
+  drawPill(ctx, 310, 360, 460, 54, 27, '#fde047', '#ffffff', `${stu.Class} — ${CFG.posterHeadline || 'TOPPER'}`, '#06362d', '900 25px "Noto Sans Malayalam",sans-serif');
+
+  // Large Curved-Square Photo Frame with Cover-Crop
+  const px = 350, py = 446, ps = 380;
+  ctx.save(); rRect(ctx, px - 8, py - 8, ps + 16, ps + 16, 56); ctx.fillStyle = '#fde047'; ctx.fill();
+  rRect(ctx, px, py, ps, ps, 48); ctx.clip(); ctx.fillStyle = '#e7f7ef'; ctx.fillRect(px, py, ps, ps);
+  if (stuPhotoObj) drawCoverImage(ctx, stuPhotoObj, px, py, ps, ps);
+  else { ctx.fillStyle = '#007965'; ctx.font = '900 140px sans-serif'; ctx.fillText('👨‍🎓', 540, py + ps / 2 + 12); }
+  ctx.restore();
+
+  // Student Details Card
+  rRect(ctx, 80, 860, 920, 260, 36); ctx.fillStyle = 'rgba(0,25,20,.6)'; ctx.fill();
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#72b863'; ctx.stroke();
+  drawPill(ctx, 435, 884, 210, 52, 26, '#fde047', null, 'RANK #' + rank, '#06362d', '900 28px "Noto Sans Malayalam",sans-serif');
+  ctx.fillStyle = '#ffffff'; ctx.font = '900 46px "Noto Sans Malayalam",sans-serif'; ctx.fillText(stu.StudentName, 540, 976);
+  ctx.fillStyle = '#a8e69a'; ctx.font = '800 26px "Noto Sans Malayalam",sans-serif'; ctx.fillText(`Reg No: ${stu.RegNo}  •  ${stu.Class}`, 540, 1028);
+  drawPill(ctx, 220, 1060, 640, 48, 24, 'rgba(255,255,255,.12)', '#72b863', `${stu.tot} / ${stu.max}  •  ${stu.pct}% (Grade ${stu.grade})`, '#fde047', '900 24px "Noto Sans Malayalam",sans-serif');
+
+  // Bottom Calligraphy ('അഭിനന്ദനങ്ങൾ') Scaled 50%–200%
+  const sc = (Number(CFG.calligScale) || 100) / 100;
+  ctx.save(); ctx.translate(540, 1238); ctx.scale(sc, sc);
+  if (calligImgObj) {
+    const ar = calligImgObj.width / Math.max(1, calligImgObj.height);
+    const ch = 136, cw = Math.min(480, ch * ar);
+    ctx.drawImage(calligImgObj, -cw / 2, -ch / 2, cw, ch);
+  } else {
+    ctx.fillStyle = '#fde047'; ctx.font = 'italic 900 70px "Noto Sans Malayalam",serif';
+    ctx.fillText(CFG.calligText || 'അഭിനന്ദനങ്ങൾ', 0, 0);
+  }
+  ctx.restore();
+
+  // Left & Right Poster Footers
+  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(70, 1346); ctx.lineTo(1010, 1346); ctx.stroke();
+  ctx.fillStyle = '#d6f5e3'; ctx.font = '700 22px "Noto Sans Malayalam",sans-serif';
+  ctx.textAlign = 'left'; ctx.fillText(CFG.posterFooterL || '', 80, 1384);
+  ctx.textAlign = 'right'; ctx.fillText(CFG.posterFooterR || '', 1000, 1384);
+}
+
+/* ==========================================================================
+   COMPACT PURE-JS REAL SCANNABLE QR CODE MATRIX ENCODER (ISO 18004 V1–V5 EC-L)
+   Encodes up to 106 UTF-8 bytes with valid Reed-Solomon ECC & BCH Format Info
+   ========================================================================== */
+const QR_GF_EXP = new Uint8Array(512), QR_GF_LOG = new Uint8Array(256);
+(() => {
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    QR_GF_EXP[i] = x; QR_GF_LOG[x] = i;
+    x <<= 1; if (x & 256) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) QR_GF_EXP[i] = QR_GF_EXP[i - 255];
+})();
+
+function qrBuildMatrix(text) {
+  const bytes = Array.from(new TextEncoder().encode(text || 'https://kimonline.in')).slice(0, 106);
+  // Versions 1–5 EC Level L (single Reed-Solomon block, 100% standard)
+  const specs = [
+    { v: 1, sz: 21, dc: 19, ec: 7 },
+    { v: 2, sz: 25, dc: 34, ec: 10 },
+    { v: 3, sz: 29, dc: 55, ec: 15 },
+    { v: 4, sz: 33, dc: 80, ec: 20 },
+    { v: 5, sz: 37, dc: 108, ec: 26 }
+  ];
+  const sp = specs.find(s => bytes.length <= s.dc - 2) || specs[4];
+  const bits = [];
+  const pushBits = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  pushBits(4, 4); // Byte mode
+  pushBits(bytes.length, 8);
+  bytes.forEach(b => pushBits(b, 8));
+  pushBits(0, Math.min(4, sp.dc * 8 - bits.length));
+  while (bits.length % 8) bits.push(0);
+  const data = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j]; data.push(b);
+  }
+  for (let p = 0; data.length < sp.dc; p++) data.push(p % 2 === 0 ? 0xec : 0x11);
+
+  // Reed-Solomon Generator & Remainder
+  let gen = [1];
+  for (let i = 0; i < sp.ec; i++) {
+    const next = new Array(gen.length + 1).fill(0);
+    const f = QR_GF_EXP[i];
+    for (let j = 0; j < gen.length; j++) {
+      next[j] ^= gen[j];
+      next[j + 1] ^= gen[j] ? QR_GF_EXP[QR_GF_LOG[gen[j]] + QR_GF_LOG[f]] : 0;
+    }
+    gen = next;
+  }
+  const msg = data.concat(new Array(sp.ec).fill(0));
+  for (let i = 0; i < data.length; i++) {
+    const coef = msg[i];
+    if (coef) for (let j = 0; j < gen.length; j++) msg[i + j] ^= QR_GF_EXP[QR_GF_LOG[gen[j]] + QR_GF_LOG[coef]];
+  }
+  const codewords = data.concat(msg.slice(data.length));
+
+  const N = sp.sz;
+  const mat = Array.from({ length: N }, () => new Int8Array(N)); // 0=white,1=black
+  const res = Array.from({ length: N }, () => new Uint8Array(N));
+  const setM = (r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N) { mat[r][c] = v ? 1 : 0; res[r][c] = 1; } };
+
+  // Finder Patterns + Separators
+  [[0, 0], [0, N - 7], [N - 7, 0]].forEach(([r0, c0]) => {
+    for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+      const inB = r >= 0 && r < 7 && c >= 0 && c < 7;
+      const dark = inB && (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4));
+      setM(r0 + r, c0 + c, dark);
+    }
+  });
+  // Alignment Pattern for V2–V5 (single center at N-7, N-7)
+  if (sp.v >= 2) {
+    const ac = N - 7;
+    for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) {
+      setM(ac + r, ac + c, Math.max(Math.abs(r), Math.abs(c)) !== 1);
+    }
+  }
+  // Timing Patterns + Dark Module
+  for (let i = 8; i < N - 8; i++) { setM(6, i, i % 2 === 0); setM(i, 6, i % 2 === 0); }
+  setM(N - 8, 8, 1);
+  // Reserve Format Info Areas
+  for (let i = 0; i < 9; i++) { res[8][i] = 1; res[i][8] = 1; }
+  for (let i = 0; i < 8; i++) { res[8][N - 1 - i] = 1; res[N - 1 - i][8] = 1; }
+
+  // Place Codewords in Zig-Zag & Apply Mask 0 ((r+c)%2===0)
+  const mask = 0;
+  let bitIdx = 0, up = true;
+  for (let col = N - 1; col > 0; col -= 2) {
+    if (col === 6) col--;
+    for (let step = 0; step < N; step++) {
+      const r = up ? N - 1 - step : step;
+      for (let dc = 0; dc < 2; dc++) {
+        const c = col - dc;
+        if (!res[r][c]) {
+          const cw = codewords[bitIdx >> 3] || 0;
+          let bit = (cw >>> (7 - (bitIdx & 7))) & 1;
+          if ((r + c) % 2 === 0) bit ^= 1;
+          mat[r][c] = bit;
+          bitIdx++;
+        }
+      }
+    }
+    up = !up;
+  }
+
+  // Write BCH(15,5) Format Info for EC Level L (01) + Mask 0
+  const d5 = (1 << 3) | mask;
+  let rem = d5 << 10;
+  for (let i = 14; i >= 10; i--) if ((rem >>> i) & 1) rem ^= 0x537 << (i - 10);
+  const fmt = ((d5 << 10) | rem) ^ 0x5412;
+  const fBit = i => (fmt >>> i) & 1;
+  for (let i = 0; i <= 5; i++) mat[8][i] = fBit(14 - i);
+  mat[8][7] = fBit(8); mat[8][8] = fBit(7); mat[7][8] = fBit(6);
+  for (let i = 0; i <= 5; i++) mat[5 - i][8] = fBit(5 - i);
+  for (let i = 0; i <= 6; i++) mat[N - 1 - i][8] = fBit(14 - i);
+  for (let i = 0; i <= 7; i++) mat[8][N - 8 + i] = fBit(7 - i);
+  return mat;
+}
+
+function drawScannableQR(ctx, url, x, y, sz) {
+  rRect(ctx, x - 14, y - 14, sz + 28, sz + 28, 20); ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#72b863'; ctx.stroke();
+  if (customQrImgObj) { try { ctx.drawImage(customQrImgObj, x, y, sz, sz); return; } catch (e) {} }
+  const mat = qrBuildMatrix(url);
+  const n = mat.length, quiet = 2, cell = sz / (n + quiet * 2);
+  ctx.fillStyle = '#000000';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (mat[r][c]) ctx.fillRect(x + (c + quiet) * cell, y + (r + quiet) * cell, Math.ceil(cell), Math.ceil(cell));
+  }
+}
+
+/* ==========================================================================
+   ADMIN SEC 3: ANNOUNCEMENT POSTER STUDIO (1080×1440 HD)
+   ========================================================================== */
+function drawAnnPoster() {
+  const cv = document.getElementById('annCanvas'); if (!cv) return;
+  const ctx = cv.getContext('2d'), m = getM(), a = CFG.ann;
+  const g = ctx.createLinearGradient(0, 0, 1080, 1440);
+  g.addColorStop(0, '#004d40'); g.addColorStop(0.55, '#007965'); g.addColorStop(1, '#002b24');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 1080, 1440);
+  ctx.strokeStyle = '#72b863'; ctx.lineWidth = 8; rRect(ctx, 28, 28, 1024, 1384, 42); ctx.stroke();
+
+  rRect(ctx, 465, 56, 150, 150, 32); ctx.fillStyle = '#ffffff'; ctx.fill();
+  try { if (logoImgObj) ctx.drawImage(logoImgObj, 475, 66, 130, 130); } catch (e) {}
+  drawPill(ctx, 310, 224, 460, 48, 24, '#72b863', '#ffffff', `${CFG.portalName} • ${m.code}`, '#ffffff', '900 24px "Noto Sans Malayalam",sans-serif');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff'; ctx.font = '900 44px "Noto Sans Malayalam",sans-serif'; ctx.fillText(m.name, 540, 318);
+  ctx.fillStyle = '#c5f0b8'; ctx.font = '800 26px "Noto Sans Malayalam",sans-serif'; ctx.fillText(m.place ? `📍 ${m.place}` : '', 540, 368);
+
+  rRect(ctx, 74, 414, 932, 888, 38); ctx.fillStyle = 'rgba(0,25,20,.62)'; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#fde047'; ctx.stroke();
+  drawPill(ctx, 210, 448, 660, 54, 27, '#fde047', null, a.tag || '📢 പ്രധാന അറിയിപ്പ്', '#06362d', '900 24px "Noto Sans Malayalam",sans-serif');
+  ctx.fillStyle = '#ffffff'; ctx.font = '900 48px "Noto Sans Malayalam",sans-serif'; ctx.fillText(a.title || '', 540, 558);
+  ctx.fillStyle = '#a8e69a'; ctx.font = '800 27px "Noto Sans Malayalam",sans-serif'; ctx.fillText(a.subtitle || '', 540, 616);
+  drawPill(ctx, 118, 666, 844, 64, 32, 'rgba(114,184,99,.24)', '#72b863', '🗓️ ' + (a.dateTime || ''), '#fde047', '900 25px "Noto Sans Malayalam",sans-serif');
+
+  // Wrapped Message Body
+  ctx.fillStyle = '#e0f7ec'; ctx.font = '700 26px "Noto Sans Malayalam",sans-serif';
+  let line = '', ly = 786;
+  (a.message || '').split(/\s+/).forEach(w => {
+    if (ctx.measureText(line + w + ' ').width > 800) { ctx.fillText(line.trim(), 540, ly); line = w + ' '; ly += 42; }
+    else line += w + ' ';
+  });
+  if (line.trim()) ctx.fillText(line.trim(), 540, ly);
+
+  const link = (a.url || 'https://kimonline.in').trim();
+  if (a.showQR) {
+    drawScannableQR(ctx, link, 706, 982, 226);
+    ctx.textAlign = 'left'; ctx.fillStyle = '#fde047'; ctx.font = '900 24px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText('🌐 റിസൾട്ട് അറിയാൻ സന്ദർശിക്കുക:', 118, 1036);
+    drawPill(ctx, 118, 1072, 545, 64, 32, '#ffffff', '#72b863', link, '#004d40', '900 25px sans-serif');
+    ctx.fillStyle = '#a8e69a'; ctx.font = '700 22px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText('📱 അല്ലെങ്കിൽ QR കോഡ് സ്കാൻ ചെയ്യുക', 118, 1172);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#fde047'; ctx.font = '800 18px sans-serif';
+    ctx.fillText('SCAN FOR RESULT', 819, 1244);
+  } else {
+    ctx.fillStyle = '#fde047'; ctx.font = '900 26px "Noto Sans Malayalam",sans-serif';
+    ctx.fillText('🌐 റിസൾട്ട് അറിയാൻ സന്ദർശിക്കുക:', 540, 1044);
+    drawPill(ctx, 170, 1084, 740, 72, 36, '#ffffff', '#72b863', link, '#004d40', '900 30px sans-serif');
+  }
+
+  // Bottom Announcement Footer
+  ctx.strokeStyle = 'rgba(255,255,255,.24)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(74, 1344); ctx.lineTo(1006, 1344); ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#d6f5e3'; ctx.font = '700 24px "Noto Sans Malayalam",sans-serif';
+  ctx.fillText(a.footer || '', 540, 1380);
+}
+
+/* ==========================================================================
+   ADMIN AUTHENTICATION, PANEL NAVIGATION & CONTROLS
+   ========================================================================== */
+function openAdminOrLogin() {
+  if (isAdminAuth) { openAdmin(); return; }
+  document.getElementById('lErr').classList.add('hidden');
+  document.getElementById('lUser').value = '';
+  document.getElementById('lPass').value = '';
+  document.getElementById('loginModal').classList.remove('hidden');
+  document.getElementById('lUser').focus();
+}
+
+function doLogin() {
+  const u = document.getElementById('lUser').value.trim();
+  const p = document.getElementById('lPass').value.trim();
+  if (u === CFG.adminUser && p === CFG.adminPass) {
+    isAdminAuth = true;
+    document.getElementById('loginModal').classList.add('hidden');
+    openAdmin();
+    toast('🔓 അഡ്മിൻ ലോഗിൻ വിജയിച്ചു!');
+  } else {
+    document.getElementById('lErr').classList.remove('hidden');
+  }
+}
+
+function openAdmin() {
+  isAdminOpen = true;
+  document.getElementById('adminOverlay').classList.remove('hidden');
+  renderAdmin();
+  drawAnnPoster();
+}
+
+function closeAdmin() {
+  isAdminOpen = false;
+  document.getElementById('adminOverlay').classList.add('hidden');
+  refreshUI();
+}
+
+function doLogout() {
+  isAdminAuth = false;
+  closeAdmin();
+  toast('🔒 അഡ്മിൻ ലോഗൗട്ട് ചെയ്തു');
+}
+
+function showAdmTab(n) {
+  for (let i = 1; i <= 8; i++) {
+    document.getElementById('aPane-' + i).classList.toggle('hidden', i !== n);
+    document.getElementById('aTab-' + i).classList.toggle('active', i === n);
+  }
+  if (n === 3) drawAnnPoster();
+}
+
+function setVis(k, v) { CFG.visibility[k] = !!v; onAdminMutate(); updVisUI(); toast(`${TAB_TITLES[k]} ${v ? '✅ ഓൺ' : '⛔ ഓഫ്'}`); }
+function setAllVis(v) { ['result', 'toppers', 'poster', 'attendance'].forEach(k => CFG.visibility[k] = !!v); onAdminMutate(); updVisUI(); toast(v ? '✅ എല്ലാം ഓൺ ആക്കി' : '⛔ എല്ലാം ഓഫ് ആക്കി'); }
+function updVisUI() {
+  ['result', 'toppers', 'poster', 'attendance'].forEach(k => {
+    const on = !!CFG.visibility[k];
+    document.getElementById('sw-' + k).checked = on;
+    const el = document.getElementById('vs-' + k);
+    el.textContent = on ? '✅ സജീവം (ON)' : '⛔ ഓഫ് (OFF)';
+    el.style.color = on ? '#007965' : '#dc2626';
+  });
+}
+function updSchedInfo() {
+  const el = document.getElementById('aSchedInfo'); if (!el) return;
+  if (!CFG.schedule.enabled) el.textContent = '🟢 ഷെഡ്യൂൾ ലോക്ക് ഓഫാണ് — ഓരോ വിഭാഗത്തിന്റെയും ON/OFF സ്വിച്ച് അനുസരിച്ച് പ്രവർത്തിക്കും.';
+  else if (!CFG.schedule.datetime) el.textContent = '⚠️ തീയതിയും സമയവും തിരഞ്ഞെടുക്കുക.';
+  else if (isSchedLocked()) el.textContent = '⏳ കൗണ്ട്ഡൗൺ സജീവം: 4 പൊതു വിഭാഗങ്ങളും ലോക്ക് ആണ്.';
+  else el.textContent = '✅ ഷെഡ്യൂൾ സമയം കഴിഞ്ഞു — ഓൺ ആയുള്ള വിഭാഗങ്ങൾ ഇപ്പോൾ ലഭ്യമാണ്.';
+}
+
+/* ==========================================================================
+   ADMIN CRUD RENDERING & HANDLERS
+   ========================================================================== */
+function renderAdmin() {
+  updVisUI(); updSchedInfo();
+  document.getElementById('aSchedOn').checked = !!CFG.schedule.enabled;
+  document.getElementById('aSchedDt').value = CFG.schedule.datetime || '';
+  document.getElementById('aSchedMsg').value = CFG.schedule.message || '';
+
+  document.getElementById('aPortal').value = CFG.portalName || '';
+  document.getElementById('aExam').value = CFG.examTitle || '';
+  document.getElementById('aWebFoot').value = CFG.webFooter || '';
+  document.getElementById('aPHead').value = CFG.posterHeadline || '';
+  document.getElementById('aPSub').value = CFG.posterSubtext || '';
+  document.getElementById('aFootL').value = CFG.posterFooterL || '';
+  document.getElementById('aFootR').value = CFG.posterFooterR || '';
+  document.getElementById('aCalTxt').value = CFG.calligText || '';
+  document.getElementById('aCalScale').value = CFG.calligScale || 100;
+  document.getElementById('calPct').textContent = CFG.calligScale || 100;
+  document.getElementById('aLogoUrl').value = (CFG.logo && /^https?:\/\//i.test(CFG.logo)) ? CFG.logo : '';
+  document.getElementById('aCalUrl').value = (CFG.calligImg && /^https?:\/\//i.test(CFG.calligImg)) ? CFG.calligImg : '';
+
+  document.getElementById('aAnnTag').value = CFG.ann.tag || '';
+  document.getElementById('aAnnTitle').value = CFG.ann.title || '';
+  document.getElementById('aAnnSub').value = CFG.ann.subtitle || '';
+  document.getElementById('aAnnDate').value = CFG.ann.dateTime || '';
+  document.getElementById('aAnnMsg').value = CFG.ann.message || '';
+  document.getElementById('aAnnUrl').value = CFG.ann.url || '';
+  document.getElementById('aAnnFoot').value = CFG.ann.footer || '';
+  document.getElementById('aAnnQrOn').checked = !!CFG.ann.showQR;
+
+  document.getElementById('aUser').value = CFG.adminUser || 'admin';
+  document.getElementById('aPass').value = CFG.adminPass || '1234';
+  document.getElementById('aSheetUrl').value = CLOUD_SYNC_URL || '';
+  document.getElementById('aSyncInt').value = String(CFG.syncInterval || 60);
+  document.getElementById('aAutoSync').checked = !!CFG.autoSync;
+
+  // Branches CRUD List
+  document.getElementById('aBranchList').innerHTML = CFG.madrasas.map((b, i) => `
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+      <input class="inp" style="width:118px;margin:0" value="${esc(b.code)}" onchange="renameBranchCode(${i},this.value)">
+      <input class="inp" style="flex:1;min-width:165px;margin:0" value="${esc(b.name)}" onchange="CFG.madrasas[${i}].name=this.value;onAdminMutate();refreshUI()">
+      <input class="inp" style="flex:1;min-width:135px;margin:0" placeholder="സ്ഥലം" value="${esc(b.place)}" onchange="CFG.madrasas[${i}].place=this.value;onAdminMutate();refreshUI()">
+      <button type="button" class="btn btn-red" onclick="delBranch(${i})">🗑️</button>
+    </div>`).join('');
+
+  const mOpts = cur => CFG.madrasas.map(x => `<option value="${esc(x.code)}" ${x.code === cur ? 'selected' : ''}>${esc(x.code)} — ${esc(x.name)}</option>`).join('');
+  const cSel = document.getElementById('aClsMad'), sSel = document.getElementById('aStuMad');
+  cSel.innerHTML = mOpts(CFG.madrasas.some(x => x.code === cSel.value) ? cSel.value : activeMadrasa);
+  sSel.innerHTML = mOpts(CFG.madrasas.some(x => x.code === sSel.value) ? sSel.value : activeMadrasa);
+  renderAdmClsSub();
+  renderAdmStuSec();
+}
+
+function renderAdmClsSub() {
+  const m = getM(document.getElementById('aClsMad').value);
+  document.getElementById('aClsList').innerHTML = m.classes.map((c, i) => `
+    <div style="display:flex;gap:7px;margin-bottom:7px">
+      <input class="inp" style="flex:1;margin:0" value="${esc(c)}" onchange="renameCls('${esc(m.code)}',${i},this.value)">
+      <button type="button" class="btn btn-red" onclick="delCls('${esc(m.code)}',${i})">🗑️</button>
+    </div>`).join('');
+  const sc = document.getElementById('aSubCls'), cur = m.classes.includes(sc.value) ? sc.value : m.classes[0];
+  sc.innerHTML = m.classes.map(c => `<option value="${esc(c)}" ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  renderAdmSubs();
+}
+
+function renderAdmSubs() {
+  const m = getM(document.getElementById('aClsMad').value), cls = document.getElementById('aSubCls').value || m.classes[0];
+  const keyOpts = k => Array.from({ length: 10 }, (_, idx) => {
+    const sk = 'Sub' + (idx + 1);
+    return `<option value="${sk}" ${sk === k ? 'selected' : ''}>${sk}</option>`;
+  }).join('');
+  document.getElementById('aSubList').innerHTML = getSubs(m, cls).map((sub, i) => `
+    <div style="display:flex;gap:6px;margin-bottom:7px;align-items:center">
+      <select class="inp" style="width:76px;margin:0;padding:7px 4px" onchange="updSub('${esc(m.code)}','${esc(cls)}',${i},'key',this.value)">${keyOpts(sub.key)}</select>
+      <input class="inp" style="flex:1;margin:0" value="${esc(sub.name)}" onchange="updSub('${esc(m.code)}','${esc(cls)}',${i},'name',this.value)">
+      <input type="number" class="inp" style="width:58px;margin:0" value="${sub.max}" onchange="updSub('${esc(m.code)}','${esc(cls)}',${i},'max',Number(this.value))">
+      <input type="number" class="inp" style="width:58px;margin:0" value="${sub.pass}" onchange="updSub('${esc(m.code)}','${esc(cls)}',${i},'pass',Number(this.value))">
+      <button type="button" class="btn btn-red" onclick="delSub('${esc(m.code)}','${esc(cls)}',${i})">🗑️</button>
+    </div>`).join('');
+}
+
+function renderAdmStuSec() {
+  const m = getM(document.getElementById('aStuMad').value), sel = document.getElementById('aStuCls');
+  const cur = m.classes.includes(sel.value) ? sel.value : m.classes[0];
+  sel.innerHTML = m.classes.map(c => `<option value="${esc(c)}" ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  renderAdmStuTbl();
+}
+
+function renderAdmStuTbl() {
+  const m = getM(document.getElementById('aStuMad').value), cls = document.getElementById('aStuCls').value || m.classes[0];
+  const subs = getSubs(m, cls);
+  const rows = STUDENTS.map((st, idx) => {
+    if (st.MadrasaCode !== m.code || st.Class !== cls) return '';
+    return `<tr>
+      <td><input class="inp" style="width:86px;margin:0" value="${esc(st.RegNo)}" onchange="updStu(${idx},'RegNo',this.value)"></td>
+      <td><input class="inp" style="width:150px;margin:0" value="${esc(st.StudentName)}" onchange="updStu(${idx},'StudentName',this.value)"></td>
+      <td><input type="number" class="inp" style="width:64px;margin:0" value="${st.WorkingDays}" onchange="updStu(${idx},'WorkingDays',Number(this.value))"></td>
+      <td><input type="number" class="inp" style="width:64px;margin:0" value="${st.DaysAttended}" onchange="updStu(${idx},'DaysAttended',Number(this.value))"></td>
+      ${subs.map(sub => `<td><input type="number" class="inp" style="width:58px;margin:0" value="${st[sub.key] === '' ? 0 : st[sub.key]}" onchange="updStu(${idx},'${sub.key}',Number(this.value))"></td>`).join('')}
+      <td><button type="button" class="btn btn-red" onclick="delStu(${idx})">🗑️</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('aStuTbl').innerHTML = `
+    <thead><tr><th>RegNo</th><th>പേര്</th><th>പ്രവൃത്തി ദിവസം</th><th>ഹാജർ</th>${subs.map(s => `<th>${esc(s.name)}</th>`).join('')}<th>Del</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="${subs.length + 5}" style="text-align:center">ഈ ക്ലാസ്സിൽ വിദ്യാർത്ഥികളില്ല</td></tr>`}</tbody>`;
+}
+
+// CRUD Mutations
+function addBranch() {
+  const c = 'KIM ' + Math.floor(1000 + Math.random() * 9000);
+  CFG.madrasas.push({ code: c, name: 'പുതിയ മദ്റസ', place: 'സ്ഥലം', classes: ['Class 5'], classSubjects: { 'Class 5': DEFAULT_CLASS_SUBS() } });
+  activeMadrasa = c; onAdminMutate(); refreshUI(); toast('✅ പുതിയ മദ്റസ ചേർത്തു!');
+}
+function renameBranchCode(i, v) {
+  const old = CFG.madrasas[i].code, c = v.trim(); if (!c || old === c) return;
+  if (activeMadrasa === old) activeMadrasa = c;
+  CFG.madrasas[i].code = c;
+  STUDENTS.forEach(s => { if (s.MadrasaCode === old) s.MadrasaCode = c; });
+  onAdminMutate(); refreshUI();
+}
+function delBranch(i) {
+  if (CFG.madrasas.length <= 1) return toast('⚠️ കുറഞ്ഞത് ഒരു മദ്റസ വേണം');
+  const code = CFG.madrasas[i].code;
+  CFG.madrasas.splice(i, 1);
+  STUDENTS = STUDENTS.filter(s => s.MadrasaCode !== code);
+  activeMadrasa = CFG.madrasas[0].code;
+  onAdminMutate(); refreshUI();
+}
+function addCls() {
+  const m = getM(document.getElementById('aClsMad').value);
+  const name = 'Class ' + (m.classes.length + 1);
+  m.classes.push(name); m.classSubjects[name] = DEFAULT_CLASS_SUBS();
+  onAdminMutate(); refreshUI();
+}
+function renameCls(mc, i, nv) {
+  const m = getM(mc), old = m.classes[i], c = nv.trim(); if (!c || old === c) return;
+  m.classes[i] = c; m.classSubjects[c] = m.classSubjects[old] || DEFAULT_CLASS_SUBS(); delete m.classSubjects[old];
+  STUDENTS.forEach(s => { if (s.MadrasaCode === mc && s.Class === old) s.Class = c; });
+  onAdminMutate(); refreshUI();
+}
+function delCls(mc, i) {
+  const m = getM(mc); if (m.classes.length <= 1) return toast('⚠️ കുറഞ്ഞത് ഒരു ക്ലാസ്സ് വേണം');
+  const removed = m.classes.splice(i, 1)[0]; delete m.classSubjects[removed];
+  onAdminMutate(); refreshUI();
+}
+function addSub() {
+  const m = getM(document.getElementById('aClsMad').value), cls = document.getElementById('aSubCls').value;
+  const subs = getSubs(m, cls);
+  if (subs.length >= 10) return toast('⚠️ പരമാവധി 10 വിഷയങ്ങൾ (Sub1–Sub10) വരെ ചേർക്കാം');
+  const used = new Set(subs.map(x => x.key));
+  let nextKey = 'Sub' + (subs.length + 1);
+  for (let k = 1; k <= 10; k++) { if (!used.has('Sub' + k)) { nextKey = 'Sub' + k; break; } }
+  subs.push({ key: nextKey, name: 'പുതിയ വിഷയം', max: 50, pass: 18 });
+  onAdminMutate(); refreshUI();
+}
+function updSub(mc, cls, i, field, val) { getSubs(getM(mc), cls)[i][field] = val; onAdminMutate(); refreshUI(); }
+function delSub(mc, cls, i) {
+  const subs = getSubs(getM(mc), cls); if (subs.length <= 1) return toast('⚠️ കുറഞ്ഞത് ഒരു വിഷയം വേണം');
+  subs.splice(i, 1); onAdminMutate(); refreshUI();
+}
+function addStu() {
+  const m = getM(document.getElementById('aStuMad').value), cls = document.getElementById('aStuCls').value;
+  const count = STUDENTS.filter(s => s.MadrasaCode === m.code).length + 1;
+  const st = { MadrasaCode: m.code, Class: cls, RegNo: 'REG' + (100 + count), StudentName: 'പുതിയ വിദ്യാർത്ഥി', WorkingDays: 200, DaysAttended: 190 };
+  for (let k = 1; k <= 10; k++) st['Sub' + k] = '';
+  getSubs(m, cls).forEach(sub => { st[sub.key] = 40; });
+  STUDENTS.push(st); onAdminMutate(); renderAdmStuTbl(); toast('✅ പുതിയ വിദ്യാർത്ഥിയെ ചേർത്തു');
+}
+function updStu(idx, field, val) { STUDENTS[idx][field] = val; onAdminMutate(); }
+function delStu(idx) { STUDENTS.splice(idx, 1); onAdminMutate(); renderAdmStuTbl(); }
+function saveCreds() {
+  const u = document.getElementById('aUser').value.trim(), p = document.getElementById('aPass').value.trim();
+  if (!u || !p) return toast('⚠️ യൂസർനെയിമും പാസ്‌വേഡും നൽകുക');
+  CFG.adminUser = u; CFG.adminPass = p; onAdminMutate(); toast('🔐 അഡ്മിൻ ലോഗിൻ അപ്‌ഡേറ്റ് ചെയ്തു!');
+}
+function setScriptUrl(val) {
+  CLOUD_SYNC_URL = val.trim();
+  saveLocalState();
+  setupAutoSync();
+  if (CLOUD_SYNC_URL) addSyncLog('🔗 Web App URL അപ്‌ഡേറ്റ് ചെയ്തു.');
+}
+
+function confirmReset() {
+  try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+  CLOUD_SYNC_URL = DEFAULT_SCRIPT_URL;
+  CFG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  STUDENTS = JSON.parse(JSON.stringify(DEFAULT_STUDENTS));
+  activeMadrasa = CFG.madrasas[0].code;
+  stuPhotoObj = null;
+  document.getElementById('resetModal').classList.add('hidden');
+  saveLocalState(); syncAssetImages(); refreshUI();
+  toast('🔄 ഡിഫോൾട്ട് ഡാറ്റ പുനഃസ്ഥാപിച്ചു!');
+}
+
+/* ==========================================================================
+   GITHUB READY SINGLE-FILE INDEX.HTML EXPORT
+   ========================================================================== */
+function exportGitHub() {
+  const safe = obj => JSON.stringify(obj, null, 2).replace(/<\//g, '<\\/');
+  const block = `/*__KIM_STATE_START__*/\nconst DEFAULT_SCRIPT_URL = ${safe(CLOUD_SYNC_URL)};\nconst DEFAULT_CONFIG = ${safe(CFG)};\nconst DEFAULT_STUDENTS = ${safe(STUDENTS)};\n/*__KIM_STATE_END__*/`;
+  const html = PRISTINE_HTML.replace(/\/\*__KIM_STATE_START__\*\/[\s\S]*?\/\*__KIM_STATE_END__\*\//, () => block);
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'index.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  addSyncLog('📦 GitHub-ലേക്കുള്ള index.html ഡൗൺലോഡ് ചെയ്തു.');
+  toast('📦 GitHub index.html ഡൗൺലോഡ് ചെയ്തു!');
+}
+
+/* ==========================================================================
+   INITIALIZATION ON WINDOW LOAD
+   ========================================================================== */
+window.onload = function () {
+  loadLocalState();
+  wasSchedLocked = isSchedLocked();
+  syncAssetImages();
+  refreshUI();
+  setupAutoSync();
+  // Live Cloud Pull on initial page load for ALL users/visitors
+  if (CLOUD_SYNC_URL) pullFromSheet(true, false);
+};
+</script></body></html>
