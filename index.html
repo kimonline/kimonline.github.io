@@ -1,608 +1,5 @@
 <!DOCTYPE html>
-<html lang="ml"><head><base href="https://1751615613-atari-embeds.googleusercontent.com/embeds/a7eacaf78f1e3ba463385dc9185669ab/inner-frame-minified.html?jsh=m%3B%2F_%2Fscs%2Fabc-static%2F_%2Fjs%2Fk%3Dgapi.lb.en.smUXTMp7CeY.O%2Fd%3D1%2Frs%3DAHpOoo_-UMASGI-dbLvJPxfO6N46l3l46A%2Fm%3D__features__" target="_blank">
-      <script>
-        (function() {
-          if (window.__atariInitRender) {
-            window.__atariInitRender(false);
-            return;
-          }
-          var isLiquid = false;
-          var guardsInstalled = false;
-          var LOCAL_DOWNLOAD_URL_RE = /^(?:blob|data):/i;
-          var PROTOCOL_RELATIVE_RE = /^[\/\\]{2}/;
-          var FORBIDDEN_TAG_RE = /^(?:iframe|frame|object|embed)$/i;
-          var XLINK_NS = 'http://www.w3.org/1999/xlink';
-          var origPreventDefault = Event.prototype.preventDefault;
-          var origStopPropagation = Event.prototype.stopPropagation;
-          var origStopImmediatePropagation =
-              Event.prototype.stopImmediatePropagation;
-          var origAddEventListener = EventTarget.prototype.addEventListener;
-          var origRemoveEventListener =
-              EventTarget.prototype.removeEventListener;
-          var origWindowStop = window.stop ? window.stop.bind(window) : null;
-          var origElementRemove = Element.prototype.remove;
-          var origGetAttribute = Element.prototype.getAttribute;
-          var origGetAttributeNS = Element.prototype.getAttributeNS;
-          var origHasAttribute = Element.prototype.hasAttribute;
-          var origHasAttributeNS = Element.prototype.hasAttributeNS;
-          var origSetAttribute = Element.prototype.setAttribute;
-          var origSetAttributeNS = Element.prototype.setAttributeNS;
-          var origSetAttributeNode = Element.prototype.setAttributeNode;
-          var origSetAttributeNodeNS = Element.prototype.setAttributeNodeNS;
-          var origRemoveAttribute = Element.prototype.removeAttribute;
-          var origRemoveAttributeNS = Element.prototype.removeAttributeNS;
-          var origComposedPath = Event.prototype.composedPath;
-          var origCreateElement = Document.prototype.createElement;
-          var origCreateElementNS = Document.prototype.createElementNS;
-          var validatingEvents =
-              typeof WeakSet !== 'undefined' ? new WeakSet() : null;
-          var activeDeferredListeners = null;
-          var inProgrammaticClick = 0;
-
-          function isLinkElement(el) {
-            var tag = el && el.tagName && el.tagName.toLowerCase();
-            return tag === 'a' || tag === 'area';
-          }
-
-          function hasLinkHref(link) {
-            return origHasAttribute.call(link, 'href') ||
-                origHasAttributeNS.call(link, XLINK_NS, 'href');
-          }
-
-          // Returns the href of an HTML or SVG link, which may only have the
-          // legacy xlink:href attribute.
-          function getLinkHref(link) {
-            return origGetAttribute.call(link, 'href') ||
-                origGetAttributeNS.call(link, XLINK_NS, 'href');
-          }
-
-          function removeLinkHref(link) {
-            origRemoveAttribute.call(link, 'href');
-            origRemoveAttributeNS.call(link, XLINK_NS, 'href');
-          }
-
-          // Returns whether the link downloads a file that the app created,
-          // which doesn't send data to other sites.
-          function isLocalDownloadLink(link, href) {
-            return origHasAttribute.call(link, 'download') &&
-                LOCAL_DOWNLOAD_URL_RE.test(href);
-          }
-
-          function isRefreshValue(val) {
-            return String(val || '').trim().toLowerCase() === 'refresh';
-          }
-
-          function purgeMetaRefresh(root) {
-            if (!root || !root.querySelectorAll) return;
-            var metas = root.querySelectorAll('meta[http-equiv]');
-            for (var i = 0; i < metas.length; i++) {
-              if (isRefreshValue(
-                  origGetAttribute.call(metas[i], 'http-equiv'))) {
-                origElementRemove.call(metas[i]);
-              }
-            }
-            var frames = root.querySelectorAll('iframe, frame, object, embed');
-            for (var j = 0; j < frames.length; j++) {
-              origElementRemove.call(frames[j]);
-            }
-          }
-
-          function getParentOrHost(node) {
-            if (!node) return null;
-            if (node.parentElement) return node.parentElement;
-            var parent = node.parentNode;
-            return parent && parent.host ? parent.host : null;
-          }
-
-          function findLinkFromNode(startNode, requireHref) {
-            var el = startNode;
-            while (el && el !== document) {
-              if (isLinkElement(el) && (!requireHref || hasLinkHref(el))) {
-                return el;
-              }
-              el = getParentOrHost(el);
-            }
-            return null;
-          }
-
-          function findLinkFromEvent(e) {
-            if (origComposedPath) {
-              try {
-                var path = origComposedPath.call(e);
-                for (var i = 0; i < path.length; i++) {
-                  var node = path[i];
-                  if (isLinkElement(node) && hasLinkHref(node)) {
-                    return node;
-                  }
-                }
-              } catch (err) {}
-            }
-            return findLinkFromNode(e.target, true);
-          }
-
-          // Keeps the app from opening popups, navigating its frame, and
-          // adding meta refresh tags. document.open() keeps the window, its
-          // prototypes, and the document, so these are installed once per
-          // frame rather than on every render.
-          function installNavigationGuards() {
-            try {
-              Object.defineProperty(window, 'open', {
-                value: function() {
-                  return null;
-                },
-                writable: false,
-                configurable: false
-              });
-            } catch (err) {
-              window.open = function() {
-                return null;
-              };
-            }
-            if (window.navigation && window.navigation.addEventListener) {
-              origAddEventListener.call(
-                  window.navigation, 'navigate', function(e) {
-                    if (!e.cancelable || e.destination.sameDocument) return;
-                    if (e.downloadRequest !== null &&
-                        LOCAL_DOWNLOAD_URL_RE.test(e.destination.url)) {
-                      return;
-                    }
-                    origPreventDefault.call(e);
-                  }, true);
-            }
-            var iframeWinDesc = typeof HTMLIFrameElement !== 'undefined' &&
-                Object.getOwnPropertyDescriptor(
-                    HTMLIFrameElement.prototype, 'contentWindow');
-            if (iframeWinDesc && iframeWinDesc.get) {
-              Object.defineProperty(
-                  HTMLIFrameElement.prototype, 'contentWindow', {
-                    get: function() {
-                      return null;
-                    },
-                    configurable: false,
-                    enumerable: true
-                  });
-            }
-            var iframeDocDesc = typeof HTMLIFrameElement !== 'undefined' &&
-                Object.getOwnPropertyDescriptor(
-                    HTMLIFrameElement.prototype, 'contentDocument');
-            if (iframeDocDesc && iframeDocDesc.get) {
-              Object.defineProperty(
-                  HTMLIFrameElement.prototype, 'contentDocument', {
-                    get: function() {
-                      return null;
-                    },
-                    configurable: false,
-                    enumerable: true
-                  });
-            }
-            Document.prototype.createElement = function(tagName, options) {
-              if (FORBIDDEN_TAG_RE.test(String(tagName || ''))) {
-                return origCreateElement.call(this, 'div', options);
-              }
-              return origCreateElement.apply(this, arguments);
-            };
-            if (origCreateElementNS) {
-              Document.prototype.createElementNS = function(ns, qName, opts) {
-                var local = String(qName || '').split(':').pop();
-                if (FORBIDDEN_TAG_RE.test(local)) {
-                  return origCreateElement.call(this, 'div');
-                }
-                return origCreateElementNS.apply(this, arguments);
-              };
-            }
-            var origClick = HTMLElement.prototype.click;
-            HTMLElement.prototype.click = function() {
-              var link = findLinkFromNode(this, true);
-              if (link) {
-                var clickHref = (getLinkHref(link) || '').trim();
-                if (!clickHref.startsWith('#') &&
-                    !isLocalDownloadLink(link, clickHref)) {
-                  return;
-                }
-              }
-              inProgrammaticClick++;
-              try {
-                return origClick.apply(this, arguments);
-              } finally {
-                inProgrammaticClick--;
-              }
-            };
-            function isMetaRefreshAttr(el, name, value) {
-              return el && el.tagName &&
-                  el.tagName.toLowerCase() === 'meta' &&
-                  String(name || '').trim().toLowerCase() === 'http-equiv' &&
-                  isRefreshValue(value);
-            }
-            function validateIfActiveLink(el) {
-              if (!activeDeferredListeners || !isLinkElement(el) ||
-                  !hasLinkHref(el)) {
-                return;
-              }
-              var curHref = (getLinkHref(el) || '').trim();
-              if (!curHref.startsWith('#')) {
-                handleLiquidExternalLink(
-                    activeDeferredListeners.event, el, curHref,
-                    activeDeferredListeners.programmatic);
-              }
-            }
-            Element.prototype.setAttribute = function(name, value) {
-              if (isMetaRefreshAttr(this, name, value)) {
-                origElementRemove.call(this);
-                return;
-              }
-              var res = origSetAttribute.apply(this, arguments);
-              if (String(name || '').toLowerCase() === 'href') {
-                validateIfActiveLink(this);
-              }
-              return res;
-            };
-            if (origSetAttributeNS) {
-              Element.prototype.setAttributeNS = function(ns, name, value) {
-                var local = String(name || '');
-                if (local.includes(':')) local = local.split(':').pop();
-                if (isMetaRefreshAttr(this, local, value)) {
-                  origElementRemove.call(this);
-                  return;
-                }
-                var res = origSetAttributeNS.apply(this, arguments);
-                if (local.toLowerCase() === 'href') {
-                  validateIfActiveLink(this);
-                }
-                return res;
-              };
-            }
-            if (origSetAttributeNode) {
-              Element.prototype.setAttributeNode = function(attr) {
-                if (attr && isMetaRefreshAttr(this, attr.name, attr.value)) {
-                  origElementRemove.call(this);
-                  return null;
-                }
-                var res = origSetAttributeNode.apply(this, arguments);
-                if (attr && String(attr.name || '').toLowerCase() === 'href') {
-                  validateIfActiveLink(this);
-                }
-                return res;
-              };
-            }
-            if (origSetAttributeNodeNS) {
-              Element.prototype.setAttributeNodeNS = function(attr) {
-                var name = attr && (attr.localName || attr.name);
-                if (attr && isMetaRefreshAttr(this, name, attr.value)) {
-                  origElementRemove.call(this);
-                  return null;
-                }
-                var res = origSetAttributeNodeNS.apply(this, arguments);
-                if (String(name || '').toLowerCase() === 'href') {
-                  validateIfActiveLink(this);
-                }
-                return res;
-              };
-            }
-            function wrapHrefSetter(ctor) {
-              if (!ctor || !ctor.prototype) return;
-              var hrefDesc = Object.getOwnPropertyDescriptor(
-                  ctor.prototype, 'href');
-              if (hrefDesc && hrefDesc.set) {
-                Object.defineProperty(ctor.prototype, 'href', {
-                  get: hrefDesc.get,
-                  set: function(value) {
-                    hrefDesc.set.call(this, value);
-                    validateIfActiveLink(this);
-                  },
-                  configurable: true,
-                  enumerable: true
-                });
-              }
-            }
-            if (typeof HTMLAnchorElement !== 'undefined') {
-              wrapHrefSetter(HTMLAnchorElement);
-            }
-            if (typeof HTMLAreaElement !== 'undefined') {
-              wrapHrefSetter(HTMLAreaElement);
-            }
-            if (typeof HTMLMetaElement !== 'undefined') {
-              var desc = Object.getOwnPropertyDescriptor(
-                  HTMLMetaElement.prototype, 'httpEquiv');
-              if (desc && desc.set) {
-                Object.defineProperty(HTMLMetaElement.prototype, 'httpEquiv', {
-                  get: desc.get,
-                  set: function(value) {
-                    if (isRefreshValue(value)) {
-                      origElementRemove.call(this);
-                      return;
-                    }
-                    desc.set.call(this, value);
-                  },
-                  configurable: true,
-                  enumerable: true
-                });
-              }
-            }
-            Event.prototype.stopPropagation = function() {
-              if (validatingEvents && validatingEvents.has(this)) {
-                return;
-              }
-              return origStopPropagation.apply(this, arguments);
-            };
-            Event.prototype.stopImmediatePropagation = function() {
-              if (validatingEvents && validatingEvents.has(this)) {
-                return;
-              }
-              return origStopImmediatePropagation.apply(this, arguments);
-            };
-            var cancelBubbleDesc = Object.getOwnPropertyDescriptor(
-                Event.prototype, 'cancelBubble');
-            if (cancelBubbleDesc && cancelBubbleDesc.set) {
-              Object.defineProperty(Event.prototype, 'cancelBubble', {
-                get: cancelBubbleDesc.get,
-                set: function(val) {
-                  if (val && validatingEvents && validatingEvents.has(this)) {
-                    return;
-                  }
-                  cancelBubbleDesc.set.call(this, val);
-                },
-                configurable: true,
-                enumerable: true
-              });
-            }
-            function wrapAddEventListener(origFn) {
-              return function(type, listener, options) {
-                var res = origFn.apply(this, arguments);
-                if (activeDeferredListeners &&
-                    type === activeDeferredListeners.type) {
-                  origRemoveEventListener.call(
-                      window, activeDeferredListeners.type,
-                      activeDeferredListeners.fn, false);
-                  origAddEventListener.call(
-                      window, activeDeferredListeners.type,
-                      activeDeferredListeners.fn, false);
-                }
-                return res;
-              };
-            }
-            var origWinAdd = window.addEventListener || origAddEventListener;
-            EventTarget.prototype.addEventListener =
-                wrapAddEventListener(origAddEventListener);
-            if (typeof Window !== 'undefined' && Window.prototype) {
-              try {
-                Window.prototype.addEventListener =
-                    wrapAddEventListener(origWinAdd);
-              } catch (err) {}
-            }
-            try {
-              window.addEventListener = wrapAddEventListener(origWinAdd);
-            } catch (err) {}
-            function observeMutations(target) {
-              if (!target || typeof MutationObserver === 'undefined') return;
-              new MutationObserver(function(mutations) {
-                if (activeDeferredListeners) {
-                  for (var i = 0; i < mutations.length; i++) {
-                    var m = mutations[i];
-                    if (m.type === 'attributes' &&
-                        isLinkElement(m.target) &&
-                        hasLinkHref(m.target)) {
-                      var mHref = (getLinkHref(m.target) || '').trim();
-                      if (!mHref.startsWith('#')) {
-                        handleLiquidExternalLink(
-                            activeDeferredListeners.event, m.target, mHref,
-                            activeDeferredListeners.programmatic);
-                      }
-                    }
-                  }
-                }
-                purgeMetaRefresh(target);
-              }).observe(target, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                attributeFilter: ['http-equiv', 'href']
-              });
-            }
-            observeMutations(document);
-            if (Element.prototype.attachShadow) {
-              var origAttachShadow = Element.prototype.attachShadow;
-              Element.prototype.attachShadow = function() {
-                var sr = origAttachShadow.apply(this, arguments);
-                observeMutations(sr);
-                return sr;
-              };
-            }
-          }
-
-          // Returns the URL of an absolute or protocol-relative href, or null.
-          function parseAbsoluteUrl(href) {
-            var candidate =
-                PROTOCOL_RELATIVE_RE.test(href) ? 'https:' + href : href;
-            try {
-              return new URL(candidate);
-            } catch (err) {
-              return null;
-            }
-          }
-
-          // Opens the link in a new tab through the Google redirector, which
-          // warns users before they leave for another site.
-          function routeThroughRedirector(link, url) {
-            var redirectUrl = url.href;
-            if (url.origin !== 'https://www.google.com' ||
-                url.pathname !== '/url' ||
-                !url.searchParams.has('q')) {
-              redirectUrl = 'https://www.google.com/url?q=' +
-                  encodeURIComponent(url.href);
-            }
-            origSetAttribute.call(link, 'href', redirectUrl);
-            origRemoveAttributeNS.call(link, XLINK_NS, 'href');
-            origSetAttribute.call(link, 'target', '_blank');
-            origSetAttribute.call(link, 'rel', 'noopener noreferrer');
-          }
-
-          // Lets Liquid App links open web pages only through the redirector,
-          // and blocks links with other protocols, such as javascript:.
-          // Context menu events rewrite or remove the link attribute so that
-          // "Open link in new tab" also goes through the redirector or is
-          // disabled.
-          function handleLiquidExternalLink(e, link, href, programmatic) {
-            if (isLocalDownloadLink(link, href)) return;
-            if (programmatic || inProgrammaticClick > 0) {
-              removeLinkHref(link);
-              origPreventDefault.call(e);
-              origStopPropagation.call(e);
-              return;
-            }
-            var url = parseAbsoluteUrl(href);
-            var protocol = url ? url.protocol : '';
-            if (protocol === 'http:' || protocol === 'https:') {
-              routeThroughRedirector(link, url);
-            } else if (protocol !== 'mailto:' && protocol !== 'tel:') {
-              if (e.type === 'contextmenu') {
-                removeLinkHref(link);
-              } else {
-                origPreventDefault.call(e);
-                origStopPropagation.call(e);
-              }
-            }
-          }
-
-          function validateLiquidLinkAfterBubble(e, anchor, programmatic) {
-            if (validatingEvents) {
-              validatingEvents.add(e);
-            }
-            var state = {
-              type: e.type,
-              fn: onBubble,
-              event: e,
-              programmatic: programmatic
-            };
-            activeDeferredListeners = state;
-            function checkTarget(ev) {
-              var targetLink = anchor || findLinkFromEvent(ev);
-              if (!targetLink || !hasLinkHref(targetLink)) return;
-              var latestHref = (getLinkHref(targetLink) || '').trim();
-              if (!latestHref.startsWith('#')) {
-                handleLiquidExternalLink(
-                    ev, targetLink, latestHref, programmatic);
-              }
-            }
-            Promise.resolve().then(function() {
-              checkTarget(e);
-              if (activeDeferredListeners === state) {
-                activeDeferredListeners = null;
-              }
-            });
-            function onBubble(ev) {
-              origRemoveEventListener.call(window, ev.type, onBubble, false);
-              checkTarget(ev);
-            }
-            origAddEventListener.call(window, e.type, onBubble, false);
-          }
-
-          function handleLinkClick(e) {
-            var programmatic = inProgrammaticClick > 0;
-            // Find the nearest ancestor link (handles nested icons, spans,
-            // svgs, and shadow DOM).
-            var anchor = findLinkFromEvent(e);
-            if (!anchor) {
-              if (isLiquid) {
-                validateLiquidLinkAfterBubble(e, null, programmatic);
-              }
-              return;
-            }
-
-            if (isLiquid) {
-              validateLiquidLinkAfterBubble(e, anchor, programmatic);
-            }
-            var href = (getLinkHref(anchor) || '').trim();
-            if (!href.startsWith('#')) {
-              if (isLiquid) {
-                handleLiquidExternalLink(e, anchor, href, programmatic);
-              }
-              return;
-            }
-            if (e.type === 'contextmenu') return;
-
-            // Prevent default <base target="_blank"> navigation to a new blank tab.
-            origPreventDefault.call(e);
-            if (!isLiquid) {
-              origStopPropagation.call(e);
-            }
-
-            // Handle empty anchor or top anchor.
-            if (href === '#' || href === '#top') {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-              return;
-            }
-
-            // Resolve target element by id, falling back to legacy name attribute.
-            var targetId = href.slice(1);
-            try {
-              targetId = decodeURIComponent(targetId);
-            } catch (err) {}
-
-            var targetEl = document.getElementById(targetId);
-            if (!targetEl) {
-              try {
-                var escaped = window.CSS && CSS.escape ? CSS.escape(targetId) : targetId.replace(/["\\]/g, '\\$&');
-                targetEl = document.querySelector('[name="' + escaped + '"]');
-              } catch (err) {}
-            }
-
-            // Smoothly scroll to the target within the embed and update URL hash history.
-            if (targetEl) {
-              targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              if (window.history && window.history.pushState) {
-                window.history.pushState(null, '', href);
-              }
-            }
-          }
-
-          function initRender(nextIsLiquid) {
-            isLiquid = isLiquid || !!nextIsLiquid;
-            if (isLiquid) {
-              if (!guardsInstalled) {
-                guardsInstalled = true;
-                installNavigationGuards();
-              } else {
-                try {
-                  window.addEventListener =
-                      EventTarget.prototype.addEventListener;
-                } catch (err) {}
-              }
-              // document.open() removes the window's listeners, so this is
-              // added on every render.
-              origAddEventListener.call(window, 'beforeunload', function(e) {
-                origPreventDefault.call(e);
-                if (origWindowStop) {
-                  origWindowStop();
-                }
-              }, true);
-              purgeMetaRefresh(document);
-            }
-            // Listen during capturing phase to preempt <base target="_blank">.
-            origAddEventListener.call(
-                document, 'click', handleLinkClick, true);
-            if (isLiquid) {
-              origAddEventListener.call(
-                  document, 'auxclick', handleLinkClick, true);
-              origAddEventListener.call(
-                  document, 'contextmenu', handleLinkClick, true);
-            }
-          }
-
-          try {
-            Object.defineProperty(window, '__atariInitRender', {
-              value: initRender,
-              writable: false,
-              configurable: false
-            });
-          } catch (err) {
-            window.__atariInitRender = initRender;
-          }
-          initRender(false);
-        })();
-      </script>
-    
-
-
+<html lang="ml"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KIM Online — മദ്റസ പരീക്ഷാ ഫലപ്രഖ്യാപന പോർട്ടൽ</title>
@@ -817,8 +214,7 @@ footer{background:var(--ink);color:#d6f5e3;text-align:center;padding:15px 12px;f
       <!-- Strictly Vertical Search Form -->
       <div class="search-v">
         <select id="searchCls" aria-label="ക്ലാസ്സ് തിരഞ്ഞെടുക്കുക" onchange="clearResult()"></select>
-        <input id="regInput" type="text" placeholder="രജിസ്റ്റർ നമ്പർ നൽകുക"
- aria-label="രജിസ്റ്റർ നമ്പർ" onkeydown="if(event.key==='Enter')searchResult()">
+        <input id="regInput" type="text" placeholder="രജിസ്റ്റർ നമ്പർ നൽകുക" aria-label="രജിസ്റ്റർ നമ്പർ" onkeydown="if(event.key==='Enter')searchResult()">
         <button type="button" class="btn" onclick="searchResult()">🔍 ഫലം കാണുക</button>
       </div>
     </div>
@@ -1074,6 +470,7 @@ footer{background:var(--ink);color:#d6f5e3;text-align:center;padding:15px 12px;f
           <button type="button" class="btn" onclick="addStu()">+ പുതിയ വിദ്യാർത്ഥി</button>
         </div>
       </div>
+      <div style="font-size:12px;font-weight:800;color:#007965;margin-bottom:8px">💡 പരീക്ഷയ്ക്ക് ആബ്സെന്റ് ആയ വിഷയത്തിന് മാർക്കിന് പകരം <strong>A</strong> എന്ന് നൽകുക (ടോട്ടലിൽ തനിയെ ഒഴിവാക്കും).</div>
       <div style="overflow-x:auto"><table id="aStuTbl"></table></div>
     </div>
 
@@ -1498,6 +895,33 @@ function deepMergeConfig(src) {
   return out;
 }
 
+function normalizeMarkValue(val) {
+  if (val === '' || val === null || val === undefined) return '';
+  const str = String(val).trim().toUpperCase();
+  if (str === '') return '';
+  if (str === 'A' || str === 'AB' || str === 'ABSENT') return 'A';
+  const num = Number(str);
+  return Number.isNaN(num) ? '' : num;
+}
+
+function parseMark(rawVal) {
+  if (rawVal === '' || rawVal === null || rawVal === undefined) {
+    return { isAbsent: false, num: 0, display: '0' };
+  }
+  const str = String(rawVal).trim().toUpperCase();
+  if (str === '') {
+    return { isAbsent: false, num: 0, display: '0' };
+  }
+  if (str === 'A' || str === 'AB' || str === 'ABSENT') {
+    return { isAbsent: true, num: 0, display: 'A' };
+  }
+  const num = Number(str);
+  if (Number.isNaN(num)) {
+    return { isAbsent: false, num: 0, display: '0' };
+  }
+  return { isAbsent: false, num: num, display: String(num) };
+}
+
 function normalizeStudents(arr) {
   if (!Array.isArray(arr)) return [];
   return arr.filter(r => r && (r.RegNo || r.StudentName)).map(r => {
@@ -1510,8 +934,7 @@ function normalizeStudents(arr) {
       DaysAttended: Number(r.DaysAttended) || 0
     };
     for (let k = 1; k <= 10; k++) {
-      const val = r['Sub' + k];
-      o['Sub' + k] = (val === '' || val === null || val === undefined) ? '' : Number(val);
+      o['Sub' + k] = normalizeMarkValue(r['Sub' + k]);
     }
     return o;
   });
@@ -1931,14 +1354,13 @@ function evalStu(st, m) {
   const subs = getSubs(m, st.Class);
   let tot = 0, max = 0, pass = true;
   const subResults = subs.map(sub => {
-    const raw = st[sub.key];
-    const mk = (raw === '' || raw === null || raw === undefined) ? 0 : Number(raw);
+    const pm = parseMark(st[sub.key]);
     const sMax = Number(sub.max) || 50;
     const sPass = Number(sub.pass) || 18;
-    const ok = mk >= sPass;
+    const ok = !pm.isAbsent && pm.num >= sPass;
     if (!ok) pass = false;
-    tot += mk; max += sMax;
-    return { name: sub.name, max: sMax, pass: sPass, obtained: mk, ok };
+    tot += pm.num; max += sMax;
+    return { name: sub.name, max: sMax, pass: sPass, obtained: pm.num, display: pm.display, isAbsent: pm.isAbsent, ok };
   });
   const pct = max ? ((tot / max) * 100).toFixed(1) : '0.0';
   const grade = !pass ? 'F' : pct >= 90 ? 'A+' : pct >= 80 ? 'A' : pct >= 70 ? 'B+' : pct >= 60 ? 'B' : 'C';
@@ -1996,8 +1418,8 @@ function renderGradeCard(stu, m) {
       <td>${i + 1}</td>
       <td>${esc(r.name)}</td>
       <td style="text-align:center">${r.max}</td>
-      <td style="text-align:center;font-weight:900">${r.obtained}</td>
-      <td style="text-align:center;font-weight:900;color:${r.ok ? '#007965' : '#dc2626'}">${r.ok ? 'Pass' : 'Fail'}</td>
+      <td style="text-align:center;font-weight:900;color:${r.isAbsent ? '#dc2626' : 'inherit'}">${esc(r.display)}</td>
+      <td style="text-align:center;font-weight:900;color:${r.ok ? '#007965' : '#dc2626'}">${r.isAbsent ? 'Absent' : (r.ok ? 'Pass' : 'Fail')}</td>
     </tr>`).join('');
 
   document.getElementById('resultBox').innerHTML = `
@@ -2160,11 +1582,12 @@ function buildGradeCardCanvas() {
     ctx.fillText(r.name, cx[1], y + 28);
     ctx.textAlign = 'center';
     ctx.fillText(String(r.max), cx[2], y + 28);
+    ctx.fillStyle = r.isAbsent ? '#dc2626' : '#06362d';
     ctx.font = '900 23px "Noto Sans Malayalam",sans-serif';
-    ctx.fillText(String(r.obtained), cx[3], y + 28);
+    ctx.fillText(String(r.display), cx[3], y + 28);
     ctx.fillStyle = r.ok ? '#007965' : '#dc2626';
     ctx.font = '800 21px "Noto Sans Malayalam",sans-serif';
-    ctx.fillText(r.ok ? 'Pass' : 'Fail', cx[4], y + 28);
+    ctx.fillText(r.isAbsent ? 'Absent' : (r.ok ? 'Pass' : 'Fail'), cx[4], y + 28);
     y += 56;
   });
 
@@ -2707,7 +2130,7 @@ function renderAdmStuTbl() {
       <td><input class="inp" style="width:150px;margin:0" value="${esc(st.StudentName)}" onchange="updStu(${idx},'StudentName',this.value)"></td>
       <td><input type="number" class="inp" style="width:64px;margin:0" value="${st.WorkingDays}" onchange="updStu(${idx},'WorkingDays',Number(this.value))"></td>
       <td><input type="number" class="inp" style="width:64px;margin:0" value="${st.DaysAttended}" onchange="updStu(${idx},'DaysAttended',Number(this.value))"></td>
-      ${subs.map(sub => `<td><input type="number" class="inp" style="width:58px;margin:0" value="${st[sub.key] === '' ? 0 : st[sub.key]}" onchange="updStu(${idx},'${sub.key}',Number(this.value))"></td>`).join('')}
+      ${subs.map(sub => `<td><input type="text" class="inp" style="width:58px;margin:0;text-align:center;text-transform:uppercase" placeholder="0 / A" value="${st[sub.key] === '' || st[sub.key] === undefined ? '' : esc(st[sub.key])}" onchange="updStuMark(${idx},'${sub.key}',this)"></td>`).join('')}
       <td><button type="button" class="btn btn-red" onclick="delStu(${idx})">🗑️</button></td>
     </tr>`;
   }).join('');
@@ -2778,6 +2201,12 @@ function addStu() {
   STUDENTS.push(st); onAdminMutate(); renderAdmStuTbl(); toast('✅ പുതിയ വിദ്യാർത്ഥിയെ ചേർത്തു');
 }
 function updStu(idx, field, val) { STUDENTS[idx][field] = val; onAdminMutate(); }
+function updStuMark(idx, field, el) {
+  const clean = normalizeMarkValue(el.value);
+  el.value = clean;
+  STUDENTS[idx][field] = clean;
+  onAdminMutate();
+}
 function delStu(idx) { STUDENTS.splice(idx, 1); onAdminMutate(); renderAdmStuTbl(); }
 function saveCreds() {
   const u = document.getElementById('aUser').value.trim(), p = document.getElementById('aPass').value.trim();
