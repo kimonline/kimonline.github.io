@@ -922,6 +922,14 @@ function parseMark(rawVal) {
   return { isAbsent: false, num: num, display: String(num) };
 }
 
+function normalizeOptionalNum(val) {
+  if (val === '' || val === null || val === undefined) return '';
+  const str = String(val).trim();
+  if (str === '') return '';
+  const num = Number(str);
+  return Number.isNaN(num) ? '' : num;
+}
+
 function normalizeStudents(arr) {
   if (!Array.isArray(arr)) return [];
   return arr.filter(r => r && (r.RegNo || r.StudentName)).map(r => {
@@ -930,8 +938,8 @@ function normalizeStudents(arr) {
       Class: String(r.Class || 'Class 5').trim(),
       RegNo: String(r.RegNo || '').trim(),
       StudentName: String(r.StudentName || '').trim(),
-      WorkingDays: Number(r.WorkingDays) || 200,
-      DaysAttended: Number(r.DaysAttended) || 0
+      WorkingDays: normalizeOptionalNum(r.WorkingDays),
+      DaysAttended: normalizeOptionalNum(r.DaysAttended)
     };
     for (let k = 1; k <= 10; k++) {
       o['Sub' + k] = normalizeMarkValue(r['Sub' + k]);
@@ -1364,12 +1372,17 @@ function evalStu(st, m) {
   });
   const pct = max ? ((tot / max) * 100).toFixed(1) : '0.0';
   const grade = !pass ? 'F' : pct >= 90 ? 'A+' : pct >= 80 ? 'A' : pct >= 70 ? 'B+' : pct >= 60 ? 'B' : 'C';
-  const work = Math.max(1, Number(st.WorkingDays) || 200);
-  const att = Number(st.DaysAttended) || 0;
-  const attPct = Math.round((att / work) * 100);
+  const hasWork = st.WorkingDays !== '' && st.WorkingDays !== null && st.WorkingDays !== undefined && Number(st.WorkingDays) > 0;
+  const hasAtt = st.DaysAttended !== '' && st.DaysAttended !== null && st.DaysAttended !== undefined && !Number.isNaN(Number(st.DaysAttended));
+  const work = hasWork ? Number(st.WorkingDays) : 0;
+  const att = hasAtt ? Number(st.DaysAttended) : 0;
+  const attPct = hasWork ? Math.round((att / work) * 100) : 0;
+  const attStr = hasWork
+    ? (hasAtt ? `${att} / ${work} (${attPct}%)` : `— / ${work}`)
+    : (hasAtt ? `${att}` : '—');
   return {
     ...st, tot, max, pct, grade, pass, subResults,
-    work, att, attPct, attStr: `${att} / ${work} (${attPct}%)`
+    work, att, attPct, hasWork, hasAtt, attStr
   };
 }
 
@@ -1639,7 +1652,7 @@ function renderTop3(type) {
     const raw = STUDENTS.filter(s => s.MadrasaCode === m.code && s.Class === cls).map(s => evalStu(s, m));
     const list = type === 'toppers'
       ? raw.filter(s => s.pass).sort((a, b) => b.tot - a.tot).slice(0, 3)
-      : raw.sort((a, b) => (b.att / b.work) - (a.att / a.work)).slice(0, 3);
+      : raw.filter(s => s.hasWork || s.hasAtt).sort((a, b) => (b.hasWork ? b.att / b.work : -1) - (a.hasWork ? a.att / a.work : -1) || (b.att - a.att)).slice(0, 3);
     const rows = list.length ? list.map((s, i) => `
       <div class="rank-row">
         <div>
@@ -1675,7 +1688,7 @@ function downloadListPdf(type) {
     const raw = STUDENTS.filter(s => s.MadrasaCode === m.code && s.Class === cls).map(s => evalStu(s, m));
     const list = type === 'toppers'
       ? raw.filter(s => s.pass).sort((a, b) => b.tot - a.tot).slice(0, 3)
-      : raw.sort((a, b) => (b.att / b.work) - (a.att / a.work)).slice(0, 3);
+      : raw.filter(s => s.hasWork || s.hasAtt).sort((a, b) => (b.hasWork ? b.att / b.work : -1) - (a.hasWork ? a.att / a.work : -1) || (b.att - a.att)).slice(0, 3);
     if (!list.length) {
       ctx.fillStyle = '#64748b'; ctx.font = '700 20px "Noto Sans Malayalam",sans-serif';
       ctx.fillText('വിവരങ്ങൾ ലഭ്യമല്ല', 65, y + 24); y += 56;
@@ -2128,8 +2141,8 @@ function renderAdmStuTbl() {
     return `<tr>
       <td><input class="inp" style="width:86px;margin:0" value="${esc(st.RegNo)}" onchange="updStu(${idx},'RegNo',this.value)"></td>
       <td><input class="inp" style="width:150px;margin:0" value="${esc(st.StudentName)}" onchange="updStu(${idx},'StudentName',this.value)"></td>
-      <td><input type="number" class="inp" style="width:64px;margin:0" value="${st.WorkingDays}" onchange="updStu(${idx},'WorkingDays',Number(this.value))"></td>
-      <td><input type="number" class="inp" style="width:64px;margin:0" value="${st.DaysAttended}" onchange="updStu(${idx},'DaysAttended',Number(this.value))"></td>
+      <td><input type="number" class="inp" style="width:64px;margin:0" placeholder="-" value="${st.WorkingDays === '' || st.WorkingDays === undefined || st.WorkingDays === null ? '' : st.WorkingDays}" onchange="updStu(${idx},'WorkingDays',normalizeOptionalNum(this.value))"></td>
+      <td><input type="number" class="inp" style="width:64px;margin:0" placeholder="-" value="${st.DaysAttended === '' || st.DaysAttended === undefined || st.DaysAttended === null ? '' : st.DaysAttended}" onchange="updStu(${idx},'DaysAttended',normalizeOptionalNum(this.value))"></td>
       ${subs.map(sub => `<td><input type="text" class="inp" style="width:58px;margin:0;text-align:center;text-transform:uppercase" placeholder="0 / A" value="${st[sub.key] === '' || st[sub.key] === undefined ? '' : esc(st[sub.key])}" onchange="updStuMark(${idx},'${sub.key}',this)"></td>`).join('')}
       <td><button type="button" class="btn btn-red" onclick="delStu(${idx})">🗑️</button></td>
     </tr>`;
@@ -2195,7 +2208,7 @@ function delSub(mc, cls, i) {
 function addStu() {
   const m = getM(document.getElementById('aStuMad').value), cls = document.getElementById('aStuCls').value;
   const count = STUDENTS.filter(s => s.MadrasaCode === m.code).length + 1;
-  const st = { MadrasaCode: m.code, Class: cls, RegNo: 'REG' + (100 + count), StudentName: 'പുതിയ വിദ്യാർത്ഥി', WorkingDays: 200, DaysAttended: 190 };
+  const st = { MadrasaCode: m.code, Class: cls, RegNo: 'REG' + (100 + count), StudentName: 'പുതിയ വിദ്യാർത്ഥി', WorkingDays: '', DaysAttended: '' };
   for (let k = 1; k <= 10; k++) st['Sub' + k] = '';
   getSubs(m, cls).forEach(sub => { st[sub.key] = 40; });
   STUDENTS.push(st); onAdminMutate(); renderAdmStuTbl(); toast('✅ പുതിയ വിദ്യാർത്ഥിയെ ചേർത്തു');
